@@ -8,6 +8,7 @@ import Member from "@/models/member";
 import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import { sendDiscordTaskNotification } from "@/lib/discord";
 
 // ─── GET /api/tasks ──────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Validate assignedTo member
     let validatedAssignedTo: mongoose.Types.ObjectId | null = null;
+    let assignedMemberInfo: { name: string; email?: string } | null = null;
     if (assignedTo) {
       if (!mongoose.isValidObjectId(assignedTo)) {
         return NextResponse.json({ error: "Invalid assignedTo member ID format" }, { status: 400 });
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
       }
 
       validatedAssignedTo = member._id;
+      assignedMemberInfo = { name: member.name, email: member.email };
     }
 
     // 2. Validate dueDate (Prohibit Past Dates)
@@ -148,6 +151,18 @@ export async function POST(request: NextRequest) {
 
     const newState = task.toObject();
 
+    // 3. Dispatch Discord ClickUp-style notification (isolated fail-safe)
+    const discordResult = await sendDiscordTaskNotification({
+      task,
+      project,
+      assignedMember: assignedMemberInfo,
+      creator: {
+        name: auth.member.name,
+        role: auth.member.role,
+      },
+      appUrl: request.nextUrl.origin,
+    });
+
     await recordAuditLog({
       requestId,
       actor: auth.member,
@@ -161,6 +176,13 @@ export async function POST(request: NextRequest) {
       newState,
       decisionReason: (body.decisionReason as string) || `Created task '${task.title}' in project '${project.name}'`,
       authorizationResult: "STANDARD_GRANT",
+      metadata: {
+        discordNotification: {
+          attempted: discordResult.attempted,
+          delivered: discordResult.delivered,
+          scope: discordResult.scope,
+        },
+      },
     });
 
     // 1. If assigned to a member, notify them

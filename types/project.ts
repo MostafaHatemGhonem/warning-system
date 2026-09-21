@@ -56,6 +56,9 @@ export type Project = {
   members: number;
   dueDate: string;
   workspaceId?: string;
+  discordWebhookUrl?: string | null;
+  hasDiscordWebhook?: boolean;
+  maskedDiscordWebhook?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };

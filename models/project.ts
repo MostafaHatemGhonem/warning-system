@@ -97,6 +97,12 @@ const projectSchema = new Schema(
       default: "infinity-explorers",
       index: true,
     },
+
+    discordWebhookUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
   },
   {
     timestamps: true,

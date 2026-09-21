@@ -32,6 +32,9 @@ export function CreateProjectModal({
   const [description, setDescription] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [testWebhookResult, setTestWebhookResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [currentUser, setCurrentUser] = useState<MemberOption | null>(null);
   const [eligibleLeaders, setEligibleLeaders] = useState<MemberOption[]>([]);
@@ -152,6 +155,7 @@ export function CreateProjectModal({
           status: "Planning",
           progress: 0,
           workspaceId: "infinity-explorers",
+          discordWebhookUrl: discordWebhookUrl.trim() || undefined,
         }),
       });
 
@@ -169,6 +173,8 @@ export function CreateProjectModal({
       setDescription("");
       setSelectedLeaderId("");
       setDueDate("");
+      setDiscordWebhookUrl("");
+      setTestWebhookResult(null);
       onClose();
     } catch (err) {
       console.error("Create project error:", err);
@@ -177,6 +183,34 @@ export function CreateProjectModal({
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleTestWebhook() {
+    if (!discordWebhookUrl.trim()) return;
+
+    try {
+      setIsTestingWebhook(true);
+      setTestWebhookResult(null);
+
+      const res = await fetch("/api/discord/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookUrl: discordWebhookUrl.trim() }),
+      });
+
+      const json = await res.json();
+      setTestWebhookResult({
+        success: res.ok && json.success,
+        message: json.message || (res.ok ? "Webhook connected!" : "Failed to test webhook."),
+      });
+    } catch (err: any) {
+      setTestWebhookResult({
+        success: false,
+        message: err?.message || "Failed to contact test endpoint.",
+      });
+    } finally {
+      setIsTestingWebhook(false);
     }
   }
 
@@ -354,6 +388,53 @@ export function CreateProjectModal({
             <p className="mt-1 text-[11px] text-zinc-400">
               You will be able to enroll team members and assign project tasks on the project details page.
             </p>
+          </div>
+
+          {/* Discord Webhook Integration */}
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5 dark:border-zinc-800/80 dark:bg-zinc-900/40">
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="project-discord-webhook"
+                className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300"
+              >
+                <span className="text-indigo-500 font-normal text-sm">💬</span> Discord Webhook <span className="text-[10px] lowercase font-normal text-zinc-400">(optional)</span>
+              </label>
+              {discordWebhookUrl.trim() && (
+                <button
+                  type="button"
+                  onClick={handleTestWebhook}
+                  disabled={isTestingWebhook}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 disabled:opacity-50 transition"
+                >
+                  {isTestingWebhook ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test Webhook"}
+                </button>
+              )}
+            </div>
+            <input
+              id="project-discord-webhook"
+              type="url"
+              placeholder="https://discord.com/api/webhooks/..."
+              value={discordWebhookUrl}
+              onChange={(event) => {
+                setDiscordWebhookUrl(event.target.value);
+                setTestWebhookResult(null);
+              }}
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white font-mono"
+            />
+            <p className="mt-1 text-[11px] text-zinc-400">
+              New tasks added to this project will be automatically posted to Discord as rich ClickUp-style cards.
+            </p>
+            {testWebhookResult && (
+              <div
+                className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
+                  testWebhookResult.success
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800"
+                }`}
+              >
+                {testWebhookResult.message}
+              </div>
+            )}
           </div>
 
           {/* Error message */}

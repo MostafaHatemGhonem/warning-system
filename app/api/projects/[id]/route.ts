@@ -6,6 +6,7 @@ import Project from "@/models/project";
 import Member from "@/models/member";
 import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
+import { isValidDiscordWebhookUrl, maskDiscordWebhookUrl } from "@/lib/discord";
 
 const ELIGIBLE_LEADER_ROLES = ["Super Admin", "Admin", "Team Leader"];
 
@@ -83,6 +84,12 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     });
 
     projectObj.teamMembers = enrichedTeamMembers;
+    const hasDiscordWebhook = Boolean(projectObj.discordWebhookUrl);
+    const maskedDiscordWebhook = maskDiscordWebhookUrl(projectObj.discordWebhookUrl);
+    delete projectObj.discordWebhookUrl;
+    projectObj.hasDiscordWebhook = hasDiscordWebhook;
+    projectObj.maskedDiscordWebhook = maskedDiscordWebhook;
+
     return NextResponse.json(projectObj);
   } catch (error) {
     console.error("GET /api/projects/[id] error:", error);
@@ -117,10 +124,27 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const body = await req.json();
 
     // Only allow safe fields to be updated
-    const allowedFields = ["name", "description", "status", "progress", "lead", "leadId", "members", "dueDate"];
+    const allowedFields = ["name", "description", "status", "progress", "lead", "leadId", "members", "dueDate", "discordWebhookUrl"];
     const update: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in body) update[key] = body[key];
+    }
+
+    // Validate or clear discordWebhookUrl
+    if ("discordWebhookUrl" in body) {
+      const val = body.discordWebhookUrl;
+      if (val === null || val === "" || (typeof val === "string" && val.trim() === "")) {
+        update.discordWebhookUrl = null;
+      } else if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (!isValidDiscordWebhookUrl(trimmed)) {
+          return NextResponse.json(
+            { message: "Invalid Discord Webhook URL. Must start with https://discord.com/api/webhooks/..." },
+            { status: 400 },
+          );
+        }
+        update.discordWebhookUrl = trimmed;
+      }
     }
 
     // If updating lead or leadId, validate against active members with allowed roles
@@ -186,7 +210,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       authorizationResult: "STANDARD_GRANT",
     });
 
-    return NextResponse.json(project);
+    const safeReturn = project.toObject();
+    const hasDiscordWebhook = Boolean(safeReturn.discordWebhookUrl);
+    const maskedDiscordWebhook = maskDiscordWebhookUrl(safeReturn.discordWebhookUrl);
+    delete safeReturn.discordWebhookUrl;
+    safeReturn.hasDiscordWebhook = hasDiscordWebhook;
+    safeReturn.maskedDiscordWebhook = maskedDiscordWebhook;
+
+    return NextResponse.json(safeReturn);
   } catch (error) {
     console.error("PATCH /api/projects/[id] error:", error);
     return NextResponse.json({ message: "Failed to update project" }, { status: 500 });

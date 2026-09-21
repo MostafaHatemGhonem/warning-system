@@ -39,6 +39,7 @@ export const AUDIT_ACTIONS = [
   "delay_reports.create",
   "delay_reports.update",
   "delay_reports.delete",
+  "settings.update",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -65,7 +66,8 @@ export interface IAuditResource {
     | "Committee"
     | "Meeting"
     | "Blocker"
-    | "DelayReport";
+    | "DelayReport"
+    | "SystemSetting";
   id: mongoose.Types.ObjectId | string;
   identifier?: string;
 }
@@ -116,6 +118,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
           "Meeting",
           "Blocker",
           "DelayReport",
+          "SystemSetting",
         ],
         required: true,
       },

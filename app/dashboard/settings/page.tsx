@@ -22,6 +22,7 @@ import ProfileTab from "./components/profile-tab";
 import SecurityTab from "./components/security-tab";
 import PreferencesTab from "./components/preferences-tab";
 import AccountTab from "./components/account-tab";
+import IntegrationsTab from "./components/integrations-tab";
 
 type Member = {
   _id: string;
@@ -38,7 +39,7 @@ export default function SettingsPage() {
   const [member, setMember] = useState<Member | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences" | "account">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences" | "integrations" | "account">("profile");
 
   useEffect(() => {
     async function loadMember() {
@@ -200,6 +201,18 @@ export default function SettingsPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("integrations")}
+            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
+              activeTab === "integrations"
+                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            }`}
+          >
+            <span className="text-sm">💬</span>
+            <span>Discord & Integrations</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("account")}
             className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
               activeTab === "account"
@@ -223,6 +236,8 @@ export default function SettingsPage() {
         {member && activeTab === "security" && <SecurityTab />}
 
         {member && activeTab === "preferences" && <PreferencesTab />}
+
+        {member && activeTab === "integrations" && <IntegrationsTab member={member} />}
 
         {member && activeTab === "account" && <AccountTab member={member} />}
 

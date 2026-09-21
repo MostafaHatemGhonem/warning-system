@@ -96,8 +96,8 @@ export async function recordAuditLog(params: RecordAuditParams) {
         id: resourceId,
         identifier: params.resource.identifier,
       },
-      previousState: params.previousState || null,
-      newState: params.newState || null,
+      previousState: sanitizeAuditState(params.previousState),
+      newState: sanitizeAuditState(params.newState),
       decisionReason: decisionReason || "System recorded action",
       authorizationResult,
       overrideReason: params.overrideReason ? params.overrideReason.trim() : null,
@@ -121,4 +121,20 @@ export function getOrCreateRequestId(req?: Request): string {
     if (headerId && headerId.trim()) return headerId.trim();
   }
   return crypto.randomUUID();
+}
+
+/**
+ * Strips sensitive secrets (e.g. webhooks, passwords) from state before saving to AuditLog.
+ */
+function sanitizeAuditState(state: any): any {
+  if (!state || typeof state !== "object") return state || null;
+  if (Array.isArray(state)) return state.map(sanitizeAuditState);
+
+  const clone: Record<string, any> = { ...state };
+  delete clone.discordWebhookUrl;
+  delete clone.password;
+  delete clone.passwordHash;
+  delete clone.tokenHash;
+
+  return clone;
 }

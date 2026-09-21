@@ -46,6 +46,12 @@ export default function EditProjectModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const [isEditingWebhook, setIsEditingWebhook] = useState(false);
+  const [removeDiscordWebhook, setRemoveDiscordWebhook] = useState(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [testWebhookResult, setTestWebhookResult] = useState<{ success: boolean; message: string } | null>(null);
+
   // Fetch eligible leaders
   useEffect(() => {
     if (!isOpen) return;
@@ -104,6 +110,10 @@ export default function EditProjectModal({
       dueDate: project.dueDate ? project.dueDate.slice(0, 10) : "",
       decisionReason: "",
     });
+    setDiscordWebhookUrl("");
+    setIsEditingWebhook(false);
+    setRemoveDiscordWebhook(false);
+    setTestWebhookResult(null);
     setError(null);
   }, [project, isOpen]);
 
@@ -146,21 +156,29 @@ export default function EditProjectModal({
       setIsSubmitting(true);
       setError(null);
 
+      const payload: Record<string, any> = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        status: formData.status,
+        progress: Number(formData.progress),
+        lead: formData.lead,
+        leadId: formData.leadId,
+        members: Math.max(1, Number(formData.members) || 1),
+        dueDate: formData.dueDate,
+        decisionReason: formData.decisionReason.trim() || undefined,
+      };
+
+      if (removeDiscordWebhook) {
+        payload.discordWebhookUrl = null;
+      } else if (discordWebhookUrl.trim()) {
+        payload.discordWebhookUrl = discordWebhookUrl.trim();
+      }
+
       const targetId = project._id || project.id;
       const res = await fetch(`/api/projects/${targetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          description: formData.description.trim(),
-          status: formData.status,
-          progress: Number(formData.progress),
-          lead: formData.lead,
-          leadId: formData.leadId,
-          members: Math.max(1, Number(formData.members) || 1),
-          dueDate: formData.dueDate,
-          decisionReason: formData.decisionReason.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -176,6 +194,36 @@ export default function EditProjectModal({
       setError(err instanceof Error ? err.message : "An error occurred while updating the project");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleTestWebhook() {
+    try {
+      setIsTestingWebhook(true);
+      setTestWebhookResult(null);
+
+      const targetId = project._id || project.id;
+      const res = await fetch("/api/discord/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: targetId,
+          webhookUrl: discordWebhookUrl.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      setTestWebhookResult({
+        success: res.ok && json.success,
+        message: json.message || (res.ok ? "Webhook connected!" : "Failed to test webhook."),
+      });
+    } catch (err: any) {
+      setTestWebhookResult({
+        success: false,
+        message: err?.message || "Failed to contact test endpoint.",
+      });
+    } finally {
+      setIsTestingWebhook(false);
     }
   }
 
@@ -361,6 +409,125 @@ export default function EditProjectModal({
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs text-zinc-900 outline-none transition focus:border-zinc-950 focus:ring-1 focus:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
               />
             </div>
+          </div>
+
+          {/* Discord Webhook Integration */}
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800/80 dark:bg-zinc-900/40">
+            <div className="flex items-center justify-between mb-2">
+              <label
+                htmlFor="edit-discord-webhook"
+                className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300"
+              >
+                <span className="text-indigo-500 font-normal text-sm">💬</span> Discord Webhook Integration
+              </label>
+
+              {project.hasDiscordWebhook && !removeDiscordWebhook && !isEditingWebhook ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestWebhook}
+                    disabled={isTestingWebhook}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 disabled:opacity-50 transition"
+                  >
+                    {isTestingWebhook ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test Connection"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingWebhook(true)}
+                    className="text-[11px] font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRemoveDiscordWebhook(true)}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 transition"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : discordWebhookUrl.trim() || isEditingWebhook || removeDiscordWebhook ? (
+                <div className="flex items-center gap-2">
+                  {discordWebhookUrl.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleTestWebhook}
+                      disabled={isTestingWebhook}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 disabled:opacity-50 transition"
+                    >
+                      {isTestingWebhook ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test Webhook"}
+                    </button>
+                  )}
+                  {project.hasDiscordWebhook && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingWebhook(false);
+                        setRemoveDiscordWebhook(false);
+                        setDiscordWebhookUrl("");
+                      }}
+                      className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {project.hasDiscordWebhook && !removeDiscordWebhook && !isEditingWebhook ? (
+              <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2 text-xs dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                    {project.maskedDiscordWebhook || "•••••••••••••••• (Active)"}
+                  </span>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
+                  Connected
+                </span>
+              </div>
+            ) : removeDiscordWebhook ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300 flex items-center justify-between">
+                <span>Webhook will be disconnected upon saving.</span>
+                <button
+                  type="button"
+                  onClick={() => setRemoveDiscordWebhook(false)}
+                  className="font-semibold underline hover:no-underline"
+                >
+                  Undo
+                </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  id="edit-discord-webhook"
+                  type="url"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={discordWebhookUrl}
+                  onChange={(e) => {
+                    setDiscordWebhookUrl(e.target.value);
+                    setTestWebhookResult(null);
+                  }}
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white font-mono"
+                />
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  New tasks in this project will trigger real-time ClickUp-style Discord notifications.
+                </p>
+              </div>
+            )}
+
+            {testWebhookResult && (
+              <div
+                className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
+                  testWebhookResult.success
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800"
+                }`}
+              >
+                {testWebhookResult.message}
+              </div>
+            )}
           </div>
 
           {/* Error */}

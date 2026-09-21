@@ -7,6 +7,7 @@ import Member from "@/models/member";
 import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification, createBulkNotifications } from "@/lib/notifications";
+import { isValidDiscordWebhookUrl, maskDiscordWebhookUrl } from "@/lib/discord";
 
 const ELIGIBLE_LEADER_ROLES = ["Super Admin", "Admin", "Team Leader"];
 
@@ -29,7 +30,19 @@ export async function GET() {
       .populate("teamMembers", "name email role avatar isActive")
       .sort({ createdAt: -1 });
 
-    return NextResponse.json(projects);
+    const safeProjects = projects.map((p) => {
+      const obj = p.toObject();
+      const hasDiscordWebhook = Boolean(obj.discordWebhookUrl);
+      const maskedDiscordWebhook = maskDiscordWebhookUrl(obj.discordWebhookUrl);
+      delete obj.discordWebhookUrl;
+      return {
+        ...obj,
+        hasDiscordWebhook,
+        maskedDiscordWebhook,
+      };
+    });
+
+    return NextResponse.json(safeProjects);
   } catch (error) {
     console.error("GET /api/projects error:", error);
 
@@ -57,7 +70,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { name, description, lead, leadId, dueDate } = body;
+    const { name, description, lead, leadId, dueDate, discordWebhookUrl } = body;
+
+    let validatedDiscordWebhook: string | null = null;
+    if (discordWebhookUrl !== undefined && discordWebhookUrl !== null) {
+      const trimmedWebhook = String(discordWebhookUrl).trim();
+      if (trimmedWebhook) {
+        if (!isValidDiscordWebhookUrl(trimmedWebhook)) {
+          return NextResponse.json(
+            { message: "Invalid Discord Webhook URL. Format must start with https://discord.com/api/webhooks/..." },
+            { status: 400 },
+          );
+        }
+        validatedDiscordWebhook = trimmedWebhook;
+      }
+    }
 
     if (!name?.trim() || (!lead?.trim() && !leadId && creator.role !== "Team Leader") || !dueDate) {
       return NextResponse.json(
@@ -140,6 +167,7 @@ export async function POST(request: NextRequest) {
       progress: 0,
       members: 1,
       workspaceId: "infinity-explorers",
+      discordWebhookUrl: validatedDiscordWebhook,
     });
 
     const populatedProject = await Project.findById(project._id)
@@ -203,7 +231,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(populatedProject || project, { status: 201 });
+    const returnObj = (populatedProject || project).toObject();
+    const hasDiscordWebhook = Boolean(returnObj.discordWebhookUrl);
+    const maskedDiscordWebhook = maskDiscordWebhookUrl(returnObj.discordWebhookUrl);
+    delete returnObj.discordWebhookUrl;
+
+    return NextResponse.json(
+      {
+        ...returnObj,
+        hasDiscordWebhook,
+        maskedDiscordWebhook,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/projects error:", error);
 

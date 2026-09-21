@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import EditProjectModal from "@/components/projects/edit-project-modal";
 import AddProjectMemberModal from "@/components/projects/add-project-member-modal";
+import ProjectDiscordModal from "@/components/projects/project-discord-modal";
 import TasksSection from "@/components/tasks/tasks-section";
 import ProjectTeamRoster from "@/components/projects/project-team-roster";
 import ProjectMeetingsSection from "@/components/projects/project-meetings-section";
@@ -67,6 +68,7 @@ export default function ProjectDetailsPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDiscordOpen, setIsDiscordOpen] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
@@ -189,6 +191,22 @@ export default function ProjectDetailsPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsDiscordOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100/70 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+              title="Configure Discord Webhook"
+            >
+              <span className="text-base">💬</span>
+              <span>Discord</span>
+              {project.hasDiscordWebhook ? (
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              ) : (
+                <span className="rounded bg-indigo-200/60 px-1 py-0.2 text-[10px] font-bold text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300">
+                  Setup
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setIsEditOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
@@ -421,6 +439,15 @@ export default function ProjectDetailsPage() {
             isOpen={isAddMemberOpen}
             onClose={() => setIsAddMemberOpen(false)}
             onMemberAdded={(updated) => {
+              setProject(updated);
+            }}
+          />
+
+          <ProjectDiscordModal
+            project={project}
+            isOpen={isDiscordOpen}
+            onClose={() => setIsDiscordOpen(false)}
+            onUpdated={(updated) => {
               setProject(updated);
             }}
           />
