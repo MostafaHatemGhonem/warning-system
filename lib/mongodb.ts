@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error("Please define MONGODB_URI in .env.local");
+export async function getMongoUri(): Promise<string> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("Please define MONGODB_URI in environment variables");
+  }
+  return uri;
 }
 
 const globalForMongoose = globalThis as unknown as {
@@ -27,8 +29,13 @@ export async function connectToDatabase() {
     return cached.conn;
   }
 
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("Please define MONGODB_URI in environment variables");
+  }
+
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI!, {
+    cached.promise = mongoose.connect(uri, {
       dbName: "infinity_explorers",
     });
   }
