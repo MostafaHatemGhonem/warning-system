@@ -8,6 +8,7 @@ import Member from "@/models/member";
 import { getCurrentMember } from "@/lib/auth";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createBulkNotifications } from "@/lib/notifications";
+import { sendDiscordMeetingNotification } from "@/lib/discord";
 
 // ─── GET /api/meetings ───────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -127,14 +128,34 @@ export async function POST(req: NextRequest) {
       attendeeObjectIds = attendeeIds
         .filter((id: string) => mongoose.isValidObjectId(id))
         .map((id: string) => new mongoose.Types.ObjectId(id));
-    } else if (projectDoc && Array.isArray(projectDoc.teamMembers)) {
-      // Auto-invite all project members if not explicitly specified
-      attendeeObjectIds = projectDoc.teamMembers.map(
-        (m: any) =>
-          new mongoose.Types.ObjectId(
-            typeof m === "object" && m._id ? m._id.toString() : m.toString(),
-          ),
-      );
+    } else if (projectDoc) {
+      // Auto-invite all project members (teamMembers, memberRoster, leadId) if not explicitly specified
+      const foundIds = new Set<string>();
+
+      if (Array.isArray(projectDoc.teamMembers)) {
+        projectDoc.teamMembers.forEach((m: any) => {
+          const id = typeof m === "object" && m?._id ? m._id.toString() : m?.toString();
+          if (id && mongoose.isValidObjectId(id)) foundIds.add(id);
+        });
+      }
+
+      if (Array.isArray(projectDoc.memberRoster)) {
+        projectDoc.memberRoster.forEach((r: any) => {
+          const id = typeof r?.memberId === "object" && r?.memberId?._id 
+            ? r.memberId._id.toString() 
+            : r?.memberId?.toString();
+          if (id && mongoose.isValidObjectId(id)) foundIds.add(id);
+        });
+      }
+
+      if (projectDoc.leadId) {
+        const leadStr = typeof projectDoc.leadId === "object" && projectDoc.leadId?._id
+          ? projectDoc.leadId._id.toString()
+          : projectDoc.leadId.toString();
+        if (leadStr && mongoose.isValidObjectId(leadStr)) foundIds.add(leadStr);
+      }
+
+      attendeeObjectIds = Array.from(foundIds).map((id) => new mongoose.Types.ObjectId(id));
     }
 
     // Ensure creator is an attendee
@@ -171,6 +192,17 @@ export async function POST(req: NextRequest) {
       .populate("attendees.member", "name email role avatar")
       .lean();
 
+    // Dispatch Discord meeting notification (ClickUp/Calendar style, fail-safe)
+    const discordResult = await sendDiscordMeetingNotification({
+      meeting,
+      project: projectDoc,
+      creator: {
+        name: currentMember.name,
+        role: currentMember.role,
+      },
+      appUrl: req.nextUrl.origin,
+    });
+
     // Audit Log
     await recordAuditLog({
       requestId,
@@ -185,6 +217,13 @@ export async function POST(req: NextRequest) {
       newState: populatedMeeting,
       decisionReason: `Scheduled meeting "${meeting.title}" on ${meeting.scheduledAt.toISOString()}`,
       authorizationResult: "STANDARD_GRANT",
+      metadata: {
+        discordNotification: {
+          attempted: discordResult.attempted,
+          delivered: discordResult.delivered,
+          scope: discordResult.scope,
+        },
+      },
     });
 
     // Notify attendees (except creator)

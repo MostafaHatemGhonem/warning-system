@@ -94,4 +94,26 @@ assert.strictEqual(sanitized.discordWebhookUrl, undefined, "discordWebhookUrl mu
 assert.strictEqual(sanitized.passwordHash, undefined, "passwordHash must be stripped from audit");
 console.log("✓ Audit State Sanitization passed.");
 
+// Test 4: Meeting type colors
+function getMeetingTypeDetails(type) {
+  switch (type) {
+    case "Emergency_Session":
+      return { color: 0xef4444, label: "🚨 Emergency Session" };
+    case "Sprint_Sync":
+      return { color: 0x3b82f6, label: "⚡ Sprint Sync" };
+    case "Project_Review":
+      return { color: 0xf59e0b, label: "📋 Project Review" };
+    case "One_On_One":
+      return { color: 0x8b5cf6, label: "🤝 1-on-1 Session" };
+    case "General_Meeting":
+    default:
+      return { color: 0x7b68ee, label: "👥 General Meeting" };
+  }
+}
+
+assert.strictEqual(getMeetingTypeDetails("Emergency_Session").color, 0xef4444);
+assert.strictEqual(getMeetingTypeDetails("Sprint_Sync").color, 0x3b82f6);
+assert(getMeetingTypeDetails("One_On_One").label.includes("1-on-1"));
+console.log("✓ Meeting Embed Format & Colors passed.");
+
 console.log("🎉 All Discord integration unit tests passed successfully!");

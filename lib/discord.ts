@@ -280,6 +280,231 @@ export async function sendDiscordTaskNotification(params: {
 }
 
 /**
+ * Resolves color and label for meeting type
+ */
+function getMeetingTypeDetails(type?: string): { color: number; label: string } {
+  switch (type) {
+    case "Emergency_Session":
+      return { color: 0xef4444, label: "🚨 Emergency Session" };
+    case "Sprint_Sync":
+      return { color: 0x3b82f6, label: "⚡ Sprint Sync" };
+    case "Project_Review":
+      return { color: 0xf59e0b, label: "📋 Project Review" };
+    case "One_On_One":
+      return { color: 0x8b5cf6, label: "🤝 1-on-1 Session" };
+    case "General_Meeting":
+    default:
+      return { color: 0x7b68ee, label: "👥 General Meeting" };
+  }
+}
+
+/**
+ * Formats date and time for meeting embed (e.g. "Mon, Sep 22, 2026 at 3:00 PM")
+ */
+function formatMeetingDateTime(dateInput?: string | Date | null): string {
+  if (!dateInput) return "TBD";
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "TBD";
+    return d.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "TBD";
+  }
+}
+
+/**
+ * Sends a rich ClickUp/Calendar-style Discord notification when a new meeting is scheduled.
+ * Isolates all network and serialization errors to ensure meeting creation never fails.
+ */
+export async function sendDiscordMeetingNotification(params: {
+  meeting: {
+    _id: string | any;
+    title: string;
+    description?: string;
+    type: string;
+    scheduledAt: string | Date;
+    durationMinutes: number;
+    meetingLink?: string;
+    location?: string;
+    agenda?: string[];
+    attendees?: any[];
+  };
+  project?: {
+    _id: string | any;
+    name: string;
+    discordWebhookUrl?: string | null;
+  } | null;
+  creator: {
+    name: string;
+    role: string;
+  };
+  appUrl?: string;
+}): Promise<DiscordNotificationResult> {
+  // 1. Resolve target webhook (Project > DB Global > Env Global)
+  let webhookUrl: string | null = null;
+  let scope: "project" | "global" | "none" = "none";
+
+  if (params.project?.discordWebhookUrl && isValidDiscordWebhookUrl(params.project.discordWebhookUrl)) {
+    webhookUrl = params.project.discordWebhookUrl.trim();
+    scope = "project";
+  } else {
+    // Check dynamic global setting in DB
+    try {
+      const dbSetting = await SystemSetting.findOne({ key: "discord_global_webhook" }).lean();
+      if (dbSetting?.value && isValidDiscordWebhookUrl(String(dbSetting.value))) {
+        webhookUrl = String(dbSetting.value).trim();
+        scope = "global";
+      }
+    } catch {
+      // Ignore DB lookup error
+    }
+
+    // Fallback to env
+    if (!webhookUrl && process.env.DISCORD_WEBHOOK_URL && isValidDiscordWebhookUrl(process.env.DISCORD_WEBHOOK_URL)) {
+      webhookUrl = process.env.DISCORD_WEBHOOK_URL.trim();
+      scope = "global";
+    }
+  }
+
+  if (!webhookUrl) {
+    return { attempted: false, delivered: false, scope: "none" };
+  }
+
+  // 2. Format Embed
+  try {
+    const typeInfo = getMeetingTypeDetails(params.meeting.type);
+    const baseUrl = params.appUrl || process.env.NEXT_PUBLIC_APP_URL || "";
+    const meetingLinkUrl =
+      params.meeting.meetingLink ||
+      (baseUrl ? `${baseUrl.replace(/\/$/, "")}/dashboard/meetings` : undefined);
+
+    let desc = params.meeting.description?.trim() || "";
+    if (params.meeting.agenda && params.meeting.agenda.length > 0) {
+      const agendaText = params.meeting.agenda.map((item) => `• ${item}`).join("\n");
+      desc = desc ? `${desc}\n\n**Agenda:**\n${agendaText}` : `**Agenda:**\n${agendaText}`;
+    }
+
+    if (desc.length > 500) {
+      desc = desc.substring(0, 497) + "...";
+    }
+
+    const attendeesCount = params.meeting.attendees?.length || 0;
+    const attendeesText =
+      attendeesCount > 0 ? `${attendeesCount} Members Invited` : "Open Attendance";
+
+    const fields: DiscordEmbedField[] = [
+      {
+        name: "📁 Project",
+        value: params.project ? params.project.name : "🌐 General (All Teams)",
+        inline: true,
+      },
+      {
+        name: "🏷️ Meeting Type",
+        value: typeInfo.label,
+        inline: true,
+      },
+      {
+        name: "⏰ Scheduled Time",
+        value: formatMeetingDateTime(params.meeting.scheduledAt),
+        inline: true,
+      },
+      {
+        name: "⏱️ Duration",
+        value: `${params.meeting.durationMinutes || 45} minutes`,
+        inline: true,
+      },
+      {
+        name: "📍 Location",
+        value: params.meeting.location || "Online",
+        inline: true,
+      },
+      {
+        name: "🔗 Meeting Link",
+        value: params.meeting.meetingLink
+          ? `[Join Meeting](${params.meeting.meetingLink})`
+          : "*No link provided*",
+        inline: true,
+      },
+      {
+        name: "👥 Attendance",
+        value: attendeesText,
+        inline: true,
+      },
+      {
+        name: "✍️ Scheduled By",
+        value: `${params.creator.name} — ${params.creator.role}`,
+        inline: true,
+      },
+    ];
+
+    const embed: DiscordEmbed = {
+      title: `📅 New Meeting Scheduled: ${params.meeting.title}`,
+      url: meetingLinkUrl,
+      description: desc || undefined,
+      color: typeInfo.color,
+      fields,
+      footer: {
+        text: "Infinity Explorers System",
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    const payload = {
+      username: "Infinity Explorers Calendar",
+      avatar_url:
+        "https://raw.githubusercontent.com/MostafaHatemGhonem/warning-system/main/infinity-explorers/public/icon.png",
+      embeds: [embed],
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok || response.status === 204) {
+      return { attempted: true, delivered: true, scope };
+    }
+
+    const errorStatus = response.status;
+    console.warn(
+      `[Discord Webhook] Meeting delivery returned status ${errorStatus} (Scope: ${scope})`,
+    );
+    return {
+      attempted: true,
+      delivered: false,
+      scope,
+      error: `HTTP ${errorStatus}`,
+    };
+  } catch (err: any) {
+    console.error(
+      "[Discord Webhook] Failed to deliver meeting notification:",
+      err?.message || err,
+    );
+    return {
+      attempted: true,
+      delivered: false,
+      scope,
+      error: err?.message || "Network error",
+    };
+  }
+}
+
+/**
  * Tests a Discord Webhook URL by sending a sample embed card.
  */
 export async function testDiscordWebhook(

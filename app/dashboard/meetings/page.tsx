@@ -19,10 +19,31 @@ import {
   X,
   AlertCircle,
   FileText,
+  UserPlus,
+  Trash2,
+  Sparkles,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+
+export type MemberItem = {
+  _id: string;
+  name: string;
+  email?: string;
+  role?: string;
+  department?: string;
+  avatar?: string;
+  isActive?: boolean;
+};
+
+export type CurrentUser = {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string;
+};
 
 type Attendee = {
   _id?: string;
@@ -70,11 +91,14 @@ type MeetingItem = {
 type ProjectOption = {
   _id: string;
   name: string;
+  teamMemberIds?: string[];
 };
 
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<MeetingItem[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [members, setMembers] = useState<MemberItem[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterProject, setFilterProject] = useState<string>("ALL");
@@ -100,22 +124,74 @@ export default function MeetingsPage() {
     }
   };
 
-  // Fetch projects for filters and creation
+  // Fetch auxiliary data: projects, members, auth
   useEffect(() => {
     fetchMeetings();
-    async function loadProjects() {
+
+    async function loadAuxiliaryData() {
       try {
-        const res = await fetch("/api/projects");
-        if (res.ok) {
-          const json = await res.json();
+        const [projRes, membRes, meRes] = await Promise.all([
+          fetch("/api/projects"),
+          fetch("/api/members"),
+          fetch("/api/auth/me"),
+        ]);
+
+        if (projRes.ok) {
+          const json = await projRes.json();
           const list = Array.isArray(json) ? json : json.data || [];
-          setProjects(list.map((p: any) => ({ _id: p._id || p.id, name: p.name })));
+          setProjects(
+            list.map((p: any) => {
+              const ids = new Set<string>();
+              if (Array.isArray(p.teamMembers)) {
+                p.teamMembers.forEach((m: any) => {
+                  const id = typeof m === "object" && m?._id ? m._id.toString() : m?.toString();
+                  if (id) ids.add(id);
+                });
+              }
+              if (p.leadId) {
+                const id =
+                  typeof p.leadId === "object" && p.leadId?._id
+                    ? p.leadId._id.toString()
+                    : p.leadId.toString();
+                if (id) ids.add(id);
+              }
+              if (Array.isArray(p.memberRoster)) {
+                p.memberRoster.forEach((r: any) => {
+                  const id =
+                    typeof r?.memberId === "object" && r?.memberId?._id
+                      ? r.memberId._id.toString()
+                      : r?.memberId?.toString();
+                  if (id) ids.add(id);
+                });
+              }
+              return {
+                _id: p._id || p.id,
+                name: p.name,
+                teamMemberIds: Array.from(ids),
+              };
+            }),
+          );
+        }
+
+        if (membRes.ok) {
+          const mJson = await membRes.json();
+          const list = Array.isArray(mJson) ? mJson : mJson.data || [];
+          setMembers(list);
+        }
+
+        if (meRes.ok) {
+          const uJson = await meRes.json();
+          const user = uJson.data || uJson.user || uJson;
+          if (user && user._id) {
+            setCurrentUser(user);
+          }
         }
       } catch (err) {
-        console.error("Failed to load projects:", err);
+        console.error("Failed to load meetings auxiliary data:", err);
       }
     }
-    loadProjects();
+
+    loadAuxiliaryData();
   }, []);
 
   // Filtered meetings
@@ -442,6 +518,7 @@ export default function MeetingsPage() {
       {attendanceMeeting && (
         <AttendanceModal
           meeting={attendanceMeeting}
+          members={members}
           isOpen={Boolean(attendanceMeeting)}
           onClose={() => setAttendanceMeeting(null)}
           onUpdated={(updated) => {
@@ -457,6 +534,8 @@ export default function MeetingsPage() {
       {isCreateOpen && (
         <CreateMeetingModal
           projects={projects}
+          members={members}
+          currentUser={currentUser}
           isOpen={isCreateOpen}
           onClose={() => setIsCreateOpen(false)}
           onCreated={(newMeeting) => {
@@ -472,11 +551,13 @@ export default function MeetingsPage() {
 // ─── Attendance Modal ────────────────────────────────────────────────────────
 function AttendanceModal({
   meeting,
+  members,
   isOpen,
   onClose,
   onUpdated,
 }: {
   meeting: MeetingItem;
+  members: MemberItem[];
   isOpen: boolean;
   onClose: () => void;
   onUpdated: (updated: MeetingItem) => void;
@@ -486,12 +567,16 @@ function AttendanceModal({
       memberId: string;
       name: string;
       role: string;
+      avatar?: string;
       status: "pending" | "present" | "absent" | "excused" | "late";
       excuseReason: string;
       notes: string;
     }>
   >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addSearchQuery, setAddSearchQuery] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
 
   useEffect(() => {
     if (meeting) {
@@ -500,6 +585,7 @@ function AttendanceModal({
           memberId: a.member?._id || "",
           name: a.member?.name || "Member",
           role: a.member?.role || "Member",
+          avatar: a.member?.avatar,
           status: a.status || "pending",
           excuseReason: a.excuseReason || "",
           notes: a.notes || "",
@@ -525,6 +611,53 @@ function AttendanceModal({
     );
   };
 
+  const markAll = (newStatus: "present" | "absent") => {
+    setAttendees((prev) => prev.map((item) => ({ ...item, status: newStatus })));
+  };
+
+  const handleAddAttendee = (m: MemberItem) => {
+    setAttendees((prev) => [
+      ...prev,
+      {
+        memberId: m._id,
+        name: m.name,
+        role: m.role || "Member",
+        avatar: m.avatar,
+        status: "present", // Default to present when explicitly added in attendance
+        excuseReason: "",
+        notes: "",
+      },
+    ]);
+    setAddSearchQuery("");
+  };
+
+  const handleRemoveAttendee = (index: number) => {
+    setAttendees((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Available members who are not yet in the attendance list
+  const existingMemberIds = new Set(attendees.map((a) => a.memberId));
+  const availableToAdd = members.filter(
+    (m) =>
+      !existingMemberIds.has(m._id) &&
+      (m.name.toLowerCase().includes(addSearchQuery.toLowerCase()) ||
+        (m.role || "").toLowerCase().includes(addSearchQuery.toLowerCase()) ||
+        (m.department || "").toLowerCase().includes(addSearchQuery.toLowerCase())),
+  );
+
+  // Filter existing attendees in the UI
+  const filteredAttendees = attendees
+    .map((att, originalIndex) => ({ att, originalIndex }))
+    .filter(({ att }) => {
+      if (!filterSearch.trim()) return true;
+      const q = filterSearch.toLowerCase();
+      return att.name.toLowerCase().includes(q) || att.role.toLowerCase().includes(q);
+    });
+
+  const presentCount = attendees.filter((a) => a.status === "present" || a.status === "late").length;
+  const absentCount = attendees.filter((a) => a.status === "absent").length;
+  const excusedCount = attendees.filter((a) => a.status === "excused").length;
+
   const handleSave = async () => {
     try {
       setIsSubmitting(true);
@@ -541,7 +674,10 @@ function AttendanceModal({
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to save attendance");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || "Failed to save attendance");
+      }
       const json = await res.json();
       onUpdated(json.data);
     } catch (err: any) {
@@ -554,14 +690,31 @@ function AttendanceModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:border dark:border-zinc-800 dark:bg-zinc-950">
+        {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
           <div>
             <h2 className="text-base font-bold text-zinc-950 dark:text-white">
               Take Attendance: {meeting.title}
             </h2>
-            <p className="text-xs text-zinc-500">
-              Record attendance statuses for {attendees.length} invited member(s)
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+              <span>{attendees.length} Attendees Total</span>
+              <span>•</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                {presentCount} Present
+              </span>
+              <span>•</span>
+              <span className="text-rose-600 dark:text-rose-400 font-semibold">
+                {absentCount} Absent
+              </span>
+              {excusedCount > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                    {excusedCount} Excused
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -571,74 +724,211 @@ function AttendanceModal({
           </button>
         </div>
 
-        {/* Attendance items */}
-        <div className="max-h-96 overflow-y-auto p-6 space-y-3">
-          {attendees.map((att, idx) => (
-            <div
-              key={att.memberId || idx}
-              className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3.5 space-y-2 dark:border-zinc-800 dark:bg-zinc-900/40"
+        {/* Toolbar: Quick Bulk Actions + Search + Add Attendee */}
+        <div className="border-b border-zinc-100 bg-zinc-50/70 px-6 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-900/30">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => markAll("present")}
+                className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+              >
+                Mark All Present (تحضير الكل)
+              </button>
+              <button
+                type="button"
+                onClick={() => markAll("absent")}
+                className="rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:hover:bg-rose-900/50"
+              >
+                Mark All Absent (تغييب الكل)
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsAddOpen((prev) => !prev)}
+              className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-zinc-950 dark:text-white">
-                    {att.name}
-                  </p>
-                  <p className="text-[10px] text-zinc-500">{att.role}</p>
-                </div>
+              <UserPlus size={13} />
+              <span>{isAddOpen ? "Hide Member Picker" : "+ Add Attendee (إضافة حاضر)"}</span>
+            </button>
+          </div>
 
-                {/* Status toggle buttons */}
-                <div className="flex items-center gap-1">
-                  {(
-                    [
-                      { key: "present", label: "Present (حاضر)", color: "emerald" },
-                      { key: "late", label: "Late (متأخر)", color: "amber" },
-                      { key: "excused", label: "Excused (معذور)", color: "blue" },
-                      { key: "absent", label: "Absent (غائب)", color: "rose" },
-                    ] as const
-                  ).map((st) => {
-                    const isSelected = att.status === st.key;
-                    return (
-                      <button
-                        key={st.key}
-                        type="button"
-                        onClick={() => updateStatus(idx, st.key)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                          isSelected
-                            ? st.color === "emerald"
-                              ? "bg-emerald-600 text-white"
-                              : st.color === "amber"
-                              ? "bg-amber-600 text-white"
-                              : st.color === "blue"
-                              ? "bg-blue-600 text-white"
-                              : "bg-rose-600 text-white"
-                            : "bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-300"
-                        }`}
-                      >
-                        {st.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Excuse input if excused or late or absent */}
-              {(att.status === "excused" || att.status === "absent" || att.status === "late") && (
+          {/* Add Attendee Search & Dropdown */}
+          {isAddOpen && (
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900/50 dark:bg-blue-950/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Search size={13} className="text-zinc-400" />
                 <input
                   type="text"
-                  value={att.excuseReason}
-                  onChange={(e) => updateExcuse(idx, e.target.value)}
-                  placeholder={
-                    att.status === "excused"
-                      ? "Reason for excuse (سبب العذر المقبول)..."
-                      : att.status === "absent"
-                      ? "Absence reason / Policy notes (ملاحظة الغياب بدون إذن)..."
-                      : "Reason for delay (سبب التأخير)..."
-                  }
-                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-900 outline-none focus:border-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                  value={addSearchQuery}
+                  onChange={(e) => setAddSearchQuery(e.target.value)}
+                  placeholder="Search member to add to attendance list..."
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-900 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                 />
+              </div>
+
+              <div className="max-h-36 overflow-y-auto space-y-1">
+                {availableToAdd.length === 0 ? (
+                  <p className="py-2 text-center text-xs text-zinc-500">
+                    {members.length === 0
+                      ? "Loading members..."
+                      : "No other members available to add."}
+                  </p>
+                ) : (
+                  availableToAdd.slice(0, 10).map((m) => (
+                    <div
+                      key={m._id}
+                      onClick={() => handleAddAttendee(m)}
+                      className="flex items-center justify-between rounded-lg p-2 text-xs hover:bg-white dark:hover:bg-zinc-800/80 cursor-pointer transition border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          {m.name.charAt(0).toUpperCase()}
+                        </span>
+                        <div>
+                          <span className="font-bold text-zinc-900 dark:text-white">
+                            {m.name}
+                          </span>
+                          <span className="ml-2 text-[10px] text-zinc-500">
+                            {m.role || "Member"}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                        + Add
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Filter input for existing list */}
+        {attendees.length > 5 && (
+          <div className="border-b border-zinc-100 px-6 py-2 dark:border-zinc-800/50">
+            <div className="flex items-center gap-2">
+              <Search size={13} className="text-zinc-400" />
+              <input
+                type="text"
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                placeholder="Filter attendees in this meeting..."
+                className="w-full bg-transparent text-xs text-zinc-900 outline-none dark:text-white placeholder-zinc-400"
+              />
+              {filterSearch && (
+                <button
+                  type="button"
+                  onClick={() => setFilterSearch("")}
+                  className="text-xs text-zinc-400 hover:text-zinc-600"
+                >
+                  Clear
+                </button>
               )}
             </div>
-          ))}
+          </div>
+        )}
+
+        {/* Attendance items */}
+        <div className="max-h-96 overflow-y-auto p-6 space-y-3">
+          {attendees.length === 0 ? (
+            <div className="py-8 text-center">
+              <Users className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-600 mb-2" />
+              <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+                No attendees in this meeting yet
+              </p>
+              <p className="text-[11px] text-zinc-400 mt-1">
+                Click &quot;+ Add Attendee&quot; above to add members and record their attendance.
+              </p>
+            </div>
+          ) : filteredAttendees.length === 0 ? (
+            <p className="py-6 text-center text-xs text-zinc-500">
+              No attendees match &quot;{filterSearch}&quot;
+            </p>
+          ) : (
+            filteredAttendees.map(({ att, originalIndex: idx }) => (
+              <div
+                key={att.memberId || idx}
+                className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3.5 space-y-2 dark:border-zinc-800 dark:bg-zinc-900/40"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                      {att.name.charAt(0).toUpperCase()}
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-zinc-950 dark:text-white">
+                        {att.name}
+                      </p>
+                      <p className="text-[10px] text-zinc-500">{att.role}</p>
+                    </div>
+                  </div>
+
+                  {/* Status toggle buttons */}
+                  <div className="flex items-center gap-1">
+                    {(
+                      [
+                        { key: "present", label: "Present (حاضر)", color: "emerald" },
+                        { key: "late", label: "Late (متأخر)", color: "amber" },
+                        { key: "excused", label: "Excused (معذور)", color: "blue" },
+                        { key: "absent", label: "Absent (غائب)", color: "rose" },
+                      ] as const
+                    ).map((st) => {
+                      const isSelected = att.status === st.key;
+                      return (
+                        <button
+                          key={st.key}
+                          type="button"
+                          onClick={() => updateStatus(idx, st.key)}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                            isSelected
+                              ? st.color === "emerald"
+                                ? "bg-emerald-600 text-white"
+                                : st.color === "amber"
+                                ? "bg-amber-600 text-white"
+                                : st.color === "blue"
+                                ? "bg-blue-600 text-white"
+                                : "bg-rose-600 text-white"
+                              : "bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-300"
+                          }`}
+                        >
+                          {st.label}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      title="Remove attendee"
+                      onClick={() => handleRemoveAttendee(idx)}
+                      className="ml-1 p-1 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Excuse input if excused or late or absent */}
+                {(att.status === "excused" || att.status === "absent" || att.status === "late") && (
+                  <input
+                    type="text"
+                    value={att.excuseReason}
+                    onChange={(e) => updateExcuse(idx, e.target.value)}
+                    placeholder={
+                      att.status === "excused"
+                        ? "Reason for excuse (سبب العذر المقبول)..."
+                        : att.status === "absent"
+                        ? "Absence reason / Policy notes (ملاحظة الغياب بدون إذن)..."
+                        : "Reason for delay (سبب التأخير)..."
+                    }
+                    className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-900 outline-none focus:border-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                  />
+                )}
+              </div>
+            ))
+          )}
         </div>
 
         {/* Footer */}
@@ -665,7 +955,7 @@ function AttendanceModal({
             ) : (
               <>
                 <Check className="h-3.5 w-3.5" />
-                <span>Save Attendance</span>
+                <span>Save Attendance ({attendees.length} Members)</span>
               </>
             )}
           </button>
@@ -678,11 +968,15 @@ function AttendanceModal({
 // ─── Create Meeting Modal ───────────────────────────────────────────────────
 function CreateMeetingModal({
   projects,
+  members,
+  currentUser,
   isOpen,
   onClose,
   onCreated,
 }: {
   projects: ProjectOption[];
+  members: MemberItem[];
+  currentUser: CurrentUser | null;
   isOpen: boolean;
   onClose: () => void;
   onCreated: (newMeeting: MeetingItem) => void;
@@ -694,10 +988,66 @@ function CreateMeetingModal({
   const [scheduledAt, setScheduledAt] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [meetingLink, setMeetingLink] = useState("");
+  const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<string[]>([]);
+  const [attendeeSearch, setAttendeeSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Initialize selected attendees with current user
+  useEffect(() => {
+    if (currentUser?._id && selectedAttendeeIds.length === 0) {
+      setSelectedAttendeeIds([currentUser._id]);
+    }
+  }, [currentUser]);
+
+  // Selected project details
+  const selectedProjectObj = useMemo(
+    () => projects.find((p) => p._id === project),
+    [projects, project],
+  );
+  const projectMemberIds = selectedProjectObj?.teamMemberIds || [];
+
   if (!isOpen) return null;
+
+  const toggleMember = (id: string) => {
+    setSelectedAttendeeIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const selectProjectTeam = () => {
+    if (projectMemberIds.length === 0) return;
+    setSelectedAttendeeIds((prev) => {
+      const merged = new Set([...prev, ...projectMemberIds]);
+      if (currentUser?._id) merged.add(currentUser._id);
+      return Array.from(merged);
+    });
+  };
+
+  const selectAllActive = () => {
+    const activeIds = members
+      .filter((m) => m.isActive !== false)
+      .map((m) => m._id);
+    if (currentUser?._id && !activeIds.includes(currentUser._id)) {
+      activeIds.push(currentUser._id);
+    }
+    setSelectedAttendeeIds(activeIds);
+  };
+
+  const clearSelection = () => {
+    setSelectedAttendeeIds(currentUser?._id ? [currentUser._id] : []);
+  };
+
+  const filteredMembers = members.filter((m) => {
+    if (!attendeeSearch.trim()) return true;
+    const q = attendeeSearch.toLowerCase();
+    return (
+      m.name.toLowerCase().includes(q) ||
+      (m.role || "").toLowerCase().includes(q) ||
+      (m.department || "").toLowerCase().includes(q) ||
+      (m.email || "").toLowerCase().includes(q)
+    );
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -720,6 +1070,7 @@ function CreateMeetingModal({
           scheduledAt,
           durationMinutes,
           meetingLink,
+          attendeeIds: selectedAttendeeIds,
         }),
       });
 
@@ -736,10 +1087,10 @@ function CreateMeetingModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:border dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl dark:border dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/95">
           <h2 className="text-base font-bold text-zinc-950 dark:text-white">
-            Schedule New Meeting
+            Schedule New Meeting (جدولة اجتماع جديد)
           </h2>
           <button
             onClick={onClose}
@@ -812,8 +1163,7 @@ function CreateMeetingModal({
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
-              >
-              </input>
+              />
             </div>
 
             <div>
@@ -844,6 +1194,129 @@ function CreateMeetingModal({
             />
           </div>
 
+          {/* ─── Attendee Selector Section ────────────────────────────────────────── */}
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3.5 space-y-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users size={15} className="text-zinc-500" />
+                <label className="text-xs font-bold text-zinc-900 dark:text-white">
+                  Meeting Attendees / Participants (تحديد الحاضرين)
+                </label>
+                <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-bold text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                  {selectedAttendeeIds.length} Selected
+                </span>
+              </div>
+
+              {/* Quick Select Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                {selectedProjectObj && projectMemberIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={selectProjectTeam}
+                    className="rounded-lg bg-purple-50 px-2 py-0.5 font-bold text-purple-700 hover:bg-purple-100 dark:bg-purple-950/50 dark:text-purple-300"
+                  >
+                    ⚡ Project Team ({projectMemberIds.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={selectAllActive}
+                  className="rounded-lg bg-zinc-200 px-2 py-0.5 font-bold text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  All Members
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="rounded-lg bg-zinc-200 px-2 py-0.5 font-bold text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Attendee search */}
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-2.5 text-zinc-400" />
+              <input
+                type="text"
+                value={attendeeSearch}
+                onChange={(e) => setAttendeeSearch(e.target.value)}
+                placeholder="Search member by name, role, department..."
+                className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-3 text-xs text-zinc-900 outline-none focus:border-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              />
+            </div>
+
+            {/* Scrollable list of members */}
+            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+              {filteredMembers.length === 0 ? (
+                <p className="py-4 text-center text-xs text-zinc-400">
+                  {members.length === 0 ? "Loading members..." : "No members found."}
+                </p>
+              ) : (
+                filteredMembers.map((m) => {
+                  const isSelected = selectedAttendeeIds.includes(m._id);
+                  const isCurrentUser = currentUser?._id === m._id;
+                  const isProjectMember = projectMemberIds.includes(m._id);
+
+                  return (
+                    <div
+                      key={m._id}
+                      onClick={() => toggleMember(m._id)}
+                      className={`flex items-center justify-between rounded-xl border p-2 text-xs transition cursor-pointer ${
+                        isSelected
+                          ? "border-zinc-900 bg-zinc-900/5 dark:border-white/80 dark:bg-white/5"
+                          : "border-zinc-200 bg-white hover:bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-900/60 dark:hover:bg-zinc-800/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                            isSelected
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
+                              : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          }`}
+                        >
+                          {m.name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="truncate">
+                          <span className="font-bold text-zinc-900 dark:text-white truncate">
+                            {m.name}
+                          </span>
+                          <span className="ml-1.5 text-[10px] text-zinc-500">
+                            {m.role || "Member"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isCurrentUser && (
+                          <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                            Organizer (You)
+                          </span>
+                        )}
+                        {isProjectMember && (
+                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                            Project
+                          </span>
+                        )}
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded border transition ${
+                            isSelected
+                              ? "border-zinc-950 bg-zinc-950 text-white dark:border-white dark:bg-white dark:text-zinc-950"
+                              : "border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900"
+                          }`}
+                        >
+                          {isSelected && <Check size={11} strokeWidth={3} />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-zinc-900 dark:text-white mb-1">
               Description / Notes
@@ -863,7 +1336,7 @@ function CreateMeetingModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+          <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-zinc-200 bg-white/95 pt-3 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/95">
             <button
               type="button"
               onClick={onClose}
@@ -882,7 +1355,7 @@ function CreateMeetingModal({
                   <span>Scheduling...</span>
                 </>
               ) : (
-                <span>Schedule & Notify</span>
+                <span>Schedule ({selectedAttendeeIds.length} Invited)</span>
               )}
             </button>
           </div>
@@ -891,3 +1364,4 @@ function CreateMeetingModal({
     </div>
   );
 }
+
