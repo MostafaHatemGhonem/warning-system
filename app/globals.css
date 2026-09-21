@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #18181b;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +21,49 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Light mode defaults for form controls */
+input,
+textarea,
+select {
+  color: #18181b;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #71717a;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #18181b;
+}
+
+/* Class-based dark mode for form controls */
+.dark input,
+.dark textarea,
+.dark select {
+  color: #f4f4f5;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #a1a1aa;
+}
+
+.dark select option {
+  background-color: #18181b;
+  color: #f4f4f5;
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  color: #f4f4f5;
 }
