@@ -73,6 +73,32 @@ export function maskDiscordWebhookUrl(url?: string | null): string | null {
   return "https://discord.com/api/webhooks/••••••••";
 }
 
+export const CANONICAL_APP_URL = "https://infinity-explorers.vercel.app";
+export const INFINITY_EXPLORERS_LOGO_URL = `${CANONICAL_APP_URL}/infinity-explorers.png`;
+
+/**
+ * Resolves the base web application URL for Discord notifications.
+ * Automatically maps localhost / 127.0.0.1 to https://infinity-explorers.vercel.app
+ * so links delivered to Discord always point to the production web app.
+ */
+export function resolveAppBaseUrl(providedUrl?: string | null): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL.trim();
+    if (!envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+      return envUrl.replace(/\/$/, "");
+    }
+  }
+
+  if (providedUrl) {
+    const trimmed = providedUrl.trim();
+    if (!trimmed.includes("localhost") && !trimmed.includes("127.0.0.1")) {
+      return trimmed.replace(/\/$/, "");
+    }
+  }
+
+  return CANONICAL_APP_URL;
+}
+
 /**
  * Resolves priority color and emoji in ClickUp style.
  */
@@ -169,10 +195,8 @@ export async function sendDiscordTaskNotification(params: {
   // 2. Format ClickUp-Style Embed
   try {
     const priorityInfo = getPriorityDetails(params.task.priority);
-    const baseUrl = params.appUrl || process.env.NEXT_PUBLIC_APP_URL || "";
-    const projectLink = baseUrl
-      ? `${baseUrl.replace(/\/$/, "")}/dashboard/projects/${params.project._id}`
-      : undefined;
+    const baseUrl = resolveAppBaseUrl(params.appUrl);
+    const projectLink = `${baseUrl}/dashboard/projects/${params.project._id}`;
 
     // Status format: "todo" -> "TO DO"
     const formattedStatus = (params.task.status || "todo")
@@ -231,14 +255,14 @@ export async function sendDiscordTaskNotification(params: {
       ],
       footer: {
         text: "Infinity Explorers System",
+        icon_url: INFINITY_EXPLORERS_LOGO_URL,
       },
       timestamp: new Date().toISOString(),
     };
 
     const payload = {
       username: "Infinity Explorers Task Tracker",
-      avatar_url:
-        "https://raw.githubusercontent.com/MostafaHatemGhonem/warning-system/main/infinity-explorers/public/icon.png",
+      avatar_url: INFINITY_EXPLORERS_LOGO_URL,
       embeds: [embed],
     };
 
@@ -270,6 +294,186 @@ export async function sendDiscordTaskNotification(params: {
   } catch (err: any) {
     // Secret protection: NEVER log the webhookUrl in error traces
     console.error("[Discord Webhook] Failed to deliver task notification:", err?.message || err);
+    return {
+      attempted: true,
+      delivered: false,
+      scope,
+      error: err?.message || "Network error",
+    };
+  }
+}
+
+/**
+ * Resolves task status details (color, label, emoji)
+ */
+export function getTaskStatusDetails(status?: string): { color: number; label: string; emoji: string } {
+  switch ((status || "").toLowerCase()) {
+    case "done":
+    case "completed":
+      return { color: 0x10b981, label: "DONE", emoji: "✅" };
+    case "in-progress":
+    case "in_progress":
+      return { color: 0x3b82f6, label: "IN PROGRESS", emoji: "⚡" };
+    case "todo":
+    default:
+      return { color: 0x64748b, label: "TO DO", emoji: "📋" };
+  }
+}
+
+/**
+ * Sends a rich ClickUp-style Discord notification when a task status is updated.
+ * Isolates all network and serialization errors to ensure task status updates never fail.
+ */
+export async function sendDiscordTaskStatusUpdateNotification(params: {
+  task: {
+    _id: string | any;
+    title: string;
+    description?: string;
+    priority?: string;
+    dueDate?: string | Date | null;
+  };
+  oldStatus: string;
+  newStatus: string;
+  project: {
+    _id: string | any;
+    name: string;
+    discordWebhookUrl?: string | null;
+  };
+  assignedMember?: {
+    name: string;
+    email?: string;
+  } | null;
+  updater: {
+    name: string;
+    role: string;
+  };
+  appUrl?: string;
+}): Promise<DiscordNotificationResult> {
+  // 1. Resolve Webhook Target (Project > Global DB > Global Env)
+  let webhookUrl: string | null = null;
+  let scope: "project" | "global" | "none" = "none";
+
+  if (params.project.discordWebhookUrl && isValidDiscordWebhookUrl(params.project.discordWebhookUrl)) {
+    webhookUrl = params.project.discordWebhookUrl.trim();
+    scope = "project";
+  } else {
+    try {
+      const dbSetting = await SystemSetting.findOne({ key: "discord_global_webhook" }).lean();
+      if (dbSetting?.value && isValidDiscordWebhookUrl(String(dbSetting.value))) {
+        webhookUrl = String(dbSetting.value).trim();
+        scope = "global";
+      }
+    } catch {
+      // Ignore DB lookup error
+    }
+
+    if (!webhookUrl && process.env.DISCORD_WEBHOOK_URL && isValidDiscordWebhookUrl(process.env.DISCORD_WEBHOOK_URL)) {
+      webhookUrl = process.env.DISCORD_WEBHOOK_URL.trim();
+      scope = "global";
+    }
+  }
+
+  if (!webhookUrl) {
+    return { attempted: false, delivered: false, scope: "none" };
+  }
+
+  // 2. Format ClickUp-Style Status Update Embed
+  try {
+    const oldStatusInfo = getTaskStatusDetails(params.oldStatus);
+    const newStatusInfo = getTaskStatusDetails(params.newStatus);
+    const priorityInfo = getPriorityDetails(params.task.priority);
+    const baseUrl = resolveAppBaseUrl(params.appUrl);
+    const projectLink = `${baseUrl}/dashboard/projects/${params.project._id}`;
+
+    const assigneeText = params.assignedMember
+      ? params.assignedMember.email
+        ? `**${params.assignedMember.name}**\n${params.assignedMember.email}`
+        : `**${params.assignedMember.name}**`
+      : "*Unassigned*";
+
+    let title = `${newStatusInfo.emoji} Task Status Changed: ${params.task.title}`;
+    if (params.newStatus === "done") {
+      title = `✅ Task Completed: ${params.task.title}`;
+    } else if (params.newStatus === "in-progress") {
+      title = `⚡ Task In Progress: ${params.task.title}`;
+    }
+
+    const embed: DiscordEmbed = {
+      title,
+      url: projectLink,
+      description: `Task status updated from **${oldStatusInfo.label}** to **${newStatusInfo.label}**`,
+      color: newStatusInfo.color,
+      fields: [
+        {
+          name: "🔄 Status",
+          value: `${oldStatusInfo.emoji} ${oldStatusInfo.label} ➔ ${newStatusInfo.emoji} ${newStatusInfo.label}`,
+          inline: true,
+        },
+        {
+          name: "📁 Project",
+          value: params.project.name || "Untitled Project",
+          inline: true,
+        },
+        {
+          name: "⚡ Priority",
+          value: priorityInfo.label,
+          inline: true,
+        },
+        {
+          name: "👤 Assignee",
+          value: assigneeText,
+          inline: true,
+        },
+        {
+          name: "📅 Due Date",
+          value: formatDateForEmbed(params.task.dueDate),
+          inline: true,
+        },
+        {
+          name: "✍️ Updated By",
+          value: `${params.updater.name} — ${params.updater.role}`,
+          inline: true,
+        },
+      ],
+      footer: {
+        text: "Infinity Explorers System",
+        icon_url: INFINITY_EXPLORERS_LOGO_URL,
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    const payload = {
+      username: "Infinity Explorers Task Tracker",
+      avatar_url: INFINITY_EXPLORERS_LOGO_URL,
+      embeds: [embed],
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok || response.status === 204) {
+      return { attempted: true, delivered: true, scope };
+    }
+
+    const errorStatus = response.status;
+    console.warn(`[Discord Webhook] Status update returned status ${errorStatus} (Scope: ${scope})`);
+    return {
+      attempted: true,
+      delivered: false,
+      scope,
+      error: `HTTP ${errorStatus}`,
+    };
+  } catch (err: any) {
+    console.error("[Discord Webhook] Failed to deliver task status update notification:", err?.message || err);
     return {
       attempted: true,
       delivered: false,
@@ -381,10 +585,9 @@ export async function sendDiscordMeetingNotification(params: {
   // 2. Format Embed
   try {
     const typeInfo = getMeetingTypeDetails(params.meeting.type);
-    const baseUrl = params.appUrl || process.env.NEXT_PUBLIC_APP_URL || "";
+    const baseUrl = resolveAppBaseUrl(params.appUrl);
     const meetingLinkUrl =
-      params.meeting.meetingLink ||
-      (baseUrl ? `${baseUrl.replace(/\/$/, "")}/dashboard/meetings` : undefined);
+      params.meeting.meetingLink || `${baseUrl}/dashboard/meetings`;
 
     let desc = params.meeting.description?.trim() || "";
     if (params.meeting.agenda && params.meeting.agenda.length > 0) {
@@ -453,14 +656,14 @@ export async function sendDiscordMeetingNotification(params: {
       fields,
       footer: {
         text: "Infinity Explorers System",
+        icon_url: INFINITY_EXPLORERS_LOGO_URL,
       },
       timestamp: new Date().toISOString(),
     };
 
     const payload = {
       username: "Infinity Explorers Calendar",
-      avatar_url:
-        "https://raw.githubusercontent.com/MostafaHatemGhonem/warning-system/main/infinity-explorers/public/icon.png",
+      avatar_url: INFINITY_EXPLORERS_LOGO_URL,
       embeds: [embed],
     };
 

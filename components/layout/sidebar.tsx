@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Activity,
@@ -133,9 +134,14 @@ export function Sidebar({ open, onClose, userRole }: SidebarProps) {
           {/* ── Logo / Brand ───────────────────────────────────────────────── */}
           <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-5 dark:border-zinc-800">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-950 dark:bg-white">
-                <span className="text-xs font-bold text-white dark:text-zinc-950">IE</span>
-              </div>
+              <Image
+                src="/infinity-explorers.png"
+                alt="Infinity Explorers"
+                width={36}
+                height={36}
+                priority
+                className="h-9 w-9 rounded-lg object-contain"
+              />
               <div>
                 <p className="text-sm font-bold text-zinc-950 dark:text-white">Infinity Explorers</p>
                 <p className="text-xs text-zinc-500">Team Management</p>

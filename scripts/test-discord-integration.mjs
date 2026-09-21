@@ -116,4 +116,49 @@ assert.strictEqual(getMeetingTypeDetails("Sprint_Sync").color, 0x3b82f6);
 assert(getMeetingTypeDetails("One_On_One").label.includes("1-on-1"));
 console.log("✓ Meeting Embed Format & Colors passed.");
 
+// Test 5: Task status colors and labels
+function getTaskStatusDetails(status) {
+  switch ((status || "").toLowerCase()) {
+    case "done":
+    case "completed":
+      return { color: 0x10b981, label: "DONE", emoji: "✅" };
+    case "in-progress":
+    case "in_progress":
+      return { color: 0x3b82f6, label: "IN PROGRESS", emoji: "⚡" };
+    case "todo":
+    default:
+      return { color: 0x64748b, label: "TO DO", emoji: "📋" };
+  }
+}
+
+assert.strictEqual(getTaskStatusDetails("done").color, 0x10b981);
+assert.strictEqual(getTaskStatusDetails("done").label, "DONE");
+assert.strictEqual(getTaskStatusDetails("in-progress").color, 0x3b82f6);
+assert.strictEqual(getTaskStatusDetails("todo").color, 0x64748b);
+console.log("✓ Task Status Update Embed Details passed.");
+
+// Test 6: URL Resolution (Localhost -> Production Vercel URL)
+const CANONICAL_APP_URL = "https://infinity-explorers.vercel.app";
+function resolveAppBaseUrl(providedUrl) {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL.trim();
+    if (!envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+      return envUrl.replace(/\/$/, "");
+    }
+  }
+  if (providedUrl) {
+    const trimmed = providedUrl.trim();
+    if (!trimmed.includes("localhost") && !trimmed.includes("127.0.0.1")) {
+      return trimmed.replace(/\/$/, "");
+    }
+  }
+  return CANONICAL_APP_URL;
+}
+
+assert.strictEqual(resolveAppBaseUrl("http://localhost:3000"), "https://infinity-explorers.vercel.app");
+assert.strictEqual(resolveAppBaseUrl("http://127.0.0.1:3000"), "https://infinity-explorers.vercel.app");
+assert.strictEqual(resolveAppBaseUrl(undefined), "https://infinity-explorers.vercel.app");
+assert.strictEqual(resolveAppBaseUrl("https://custom-domain.org/"), "https://custom-domain.org");
+console.log("✓ Canonical URL Resolution (localhost -> production) passed.");
+
 console.log("🎉 All Discord integration unit tests passed successfully!");

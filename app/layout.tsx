@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Infinity Explorers",
   description: "Team management platform for Infinity Explorers",
+  icons: {
+    icon: "/infinity-explorers.png",
+    shortcut: "/infinity-explorers.png",
+    apple: "/infinity-explorers.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

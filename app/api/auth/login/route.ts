@@ -121,10 +121,18 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 },
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("POST /api/auth/login error:", error);
+    const errorMessage = error?.message || "Failed to log in";
+    const isMissingMongoUri = !process.env.MONGODB_URI;
+
     return NextResponse.json(
-      { success: false, message: "Failed to log in" },
+      {
+        success: false,
+        message: isMissingMongoUri
+          ? "Database configuration error: MONGODB_URI environment variable is missing in Vercel settings."
+          : `Login failed: ${errorMessage}`,
+      },
       { status: 500 },
     );
   }

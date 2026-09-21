@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
         name: currentMember.name,
         role: currentMember.role,
       },
-      appUrl: req.nextUrl.origin,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
     });
 
     // Audit Log

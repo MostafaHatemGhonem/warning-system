@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
         name: auth.member.name,
         role: auth.member.role,
       },
-      appUrl: request.nextUrl.origin,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
     });
 
     await recordAuditLog({

@@ -2,9 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   AlertCircle,
-  Compass,
   Eye,
   EyeOff,
   Loader2,
@@ -69,10 +69,17 @@ export default function LoginPage() {
 
         {/* ── Brand Header ──────────────────────────────────────────────────── */}
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-950 text-white shadow-xl shadow-zinc-950/10 dark:bg-white dark:text-zinc-950">
-            <Compass size={28} className="transition hover:rotate-45" />
+          <div className="mx-auto flex justify-center">
+            <Image
+              src="/infinity-explorers.png"
+              alt="Infinity Explorers Logo"
+              width={64}
+              height={64}
+              priority
+              className="h-16 w-16 rounded-xl object-contain"
+            />
           </div>
-          <h1 className="mt-6 text-2xl font-bold tracking-tight text-zinc-950 dark:text-white sm:text-3xl">
+          <h1 className="mt-5 text-2xl font-bold tracking-tight text-zinc-950 dark:text-white sm:text-3xl">
             Infinity Explorers
           </h1>
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">

@@ -8,6 +8,7 @@ import Member from "@/models/member";
 import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import { sendDiscordTaskStatusUpdateNotification } from "@/lib/discord";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -204,6 +205,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     // 2. If status changed
     if (body.status && body.status !== previousState.status) {
+      const projectDoc = await Project.findById(task.projectId);
+
       // Notify the assignee if updater is not the assignee
       if (newAssigneeId && newAssigneeId !== auth.member._id.toString()) {
         await createNotification({
@@ -222,7 +225,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       }
 
       // Also notify project lead if updater is not the project lead
-      const projectDoc = await Project.findById(task.projectId);
       const leadIdStr = projectDoc?.leadId ? projectDoc.leadId.toString() : "";
       if (leadIdStr && leadIdStr !== auth.member._id.toString() && leadIdStr !== newAssigneeId) {
         await createNotification({
@@ -237,6 +239,37 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
             role: auth.member.role,
           },
           metadata: { taskId: task._id, projectId: projectDoc._id },
+        });
+      }
+
+      // Dispatch Discord ClickUp-style notification for task status change (fail-safe)
+      if (projectDoc) {
+        await sendDiscordTaskStatusUpdateNotification({
+          task: {
+            _id: task._id,
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            dueDate: task.dueDate,
+          },
+          oldStatus: previousState.status,
+          newStatus: body.status,
+          project: {
+            _id: projectDoc._id,
+            name: projectDoc.name,
+            discordWebhookUrl: (projectDoc as any).discordWebhookUrl,
+          },
+          assignedMember: task.assignedTo
+            ? {
+                name: (task.assignedTo as any).name,
+                email: (task.assignedTo as any).email,
+              }
+            : null,
+          updater: {
+            name: auth.member.name,
+            role: auth.member.role,
+          },
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
         });
       }
     }

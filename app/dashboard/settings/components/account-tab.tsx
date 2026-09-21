@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
-  Building2,
   Calendar,
   Check,
-  CheckCircle2,
+
   Copy,
-  ExternalLink,
+
   IdCard,
   LogOut,
-  Shield,
-  ShieldCheck,
+
+
 } from "lucide-react";
 
 type Member = {
@@ -51,9 +51,13 @@ export default function AccountTab({ member }: AccountTabProps) {
       {/* Organization Details */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-zinc-950">
-            <Building2 className="h-5 w-5" />
-          </div>
+          <Image
+            src="/infinity-explorers.png"
+            alt="Infinity Explorers Logo"
+            width={36}
+            height={36}
+            className="h-9 w-9 rounded-lg object-contain"
+          />
           <div>
             <h3 className="text-sm font-bold text-zinc-950 dark:text-white">
               Organization & Workspace

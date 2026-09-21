@@ -53,10 +53,18 @@ export async function GET() {
         recentTasks,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GET /api/stats error:", error);
+    const errorMessage = error?.message || "Failed to fetch stats";
+    const isMissingMongoUri = !process.env.MONGODB_URI;
+
     return NextResponse.json(
-      { success: false, message: "Failed to fetch stats" },
+      {
+        success: false,
+        message: isMissingMongoUri
+          ? "Database configuration error: MONGODB_URI environment variable is missing in Vercel settings."
+          : `Failed to fetch stats: ${errorMessage}`,
+      },
       { status: 500 },
     );
   }
