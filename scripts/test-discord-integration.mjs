@@ -137,8 +137,9 @@ assert.strictEqual(getTaskStatusDetails("in-progress").color, 0x3b82f6);
 assert.strictEqual(getTaskStatusDetails("todo").color, 0x64748b);
 console.log("✓ Task Status Update Embed Details passed.");
 
-// Test 6: URL Resolution (Localhost -> Production Vercel URL)
-const CANONICAL_APP_URL = "https://infinity-explorers.vercel.app";
+// Test 6: URL Resolution (Localhost -> Production Canonical URL)
+const CANONICAL_APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.mostafa-hatem.tech";
 function resolveAppBaseUrl(providedUrl) {
   if (process.env.NEXT_PUBLIC_APP_URL) {
     const envUrl = process.env.NEXT_PUBLIC_APP_URL.trim();
@@ -155,9 +156,9 @@ function resolveAppBaseUrl(providedUrl) {
   return CANONICAL_APP_URL;
 }
 
-assert.strictEqual(resolveAppBaseUrl("http://localhost:3000"), "https://infinity-explorers.vercel.app");
-assert.strictEqual(resolveAppBaseUrl("http://127.0.0.1:3000"), "https://infinity-explorers.vercel.app");
-assert.strictEqual(resolveAppBaseUrl(undefined), "https://infinity-explorers.vercel.app");
+assert.strictEqual(resolveAppBaseUrl("http://localhost:3000"), CANONICAL_APP_URL);
+assert.strictEqual(resolveAppBaseUrl("http://127.0.0.1:3000"), CANONICAL_APP_URL);
+assert.strictEqual(resolveAppBaseUrl(undefined), CANONICAL_APP_URL);
 assert.strictEqual(resolveAppBaseUrl("https://custom-domain.org/"), "https://custom-domain.org");
 console.log("✓ Canonical URL Resolution (localhost -> production) passed.");
 

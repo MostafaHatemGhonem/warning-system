@@ -16,6 +16,7 @@ export type CreateNotificationParams = {
   };
   metadata?: Record<string, any>;
   workspaceId?: string;
+  emailSent?: boolean;
 };
 
 export type CreateBulkNotificationsParams = {
@@ -53,6 +54,7 @@ export async function createNotification(params: CreateNotificationParams) {
       metadata: params.metadata || {},
       workspaceId: params.workspaceId || "infinity-explorers",
       read: false,
+      emailSent: Boolean(params.emailSent),
     });
 
     return notif;

@@ -9,6 +9,8 @@ import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 import { sendDiscordTaskNotification } from "@/lib/discord";
+import { sendTaskAssignedEmail } from "@/lib/email/send-email";
+import { CANONICAL_APP_URL } from "@/lib/app-config";
 
 // ─── GET /api/tasks ──────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
         name: auth.member.name,
         role: auth.member.role,
       },
-      appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
+      appUrl: CANONICAL_APP_URL,
     });
 
     await recordAuditLog({
@@ -185,8 +187,29 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 1. If assigned to a member, notify them
+    // 1. If assigned to a member, notify them via in-app & email
+    let emailSent = false;
     if (validatedAssignedTo) {
+      const assigneeMember = await Member.findById(validatedAssignedTo).select("name email");
+      if (assigneeMember?.email) {
+        console.log(
+          `[Tasks API] Sending task assignment email to ${assigneeMember.email} for task "${task.title}" (Project: ${project.name})...`,
+        );
+        const emailResult = await sendTaskAssignedEmail({
+          email: assigneeMember.email,
+          userName: assigneeMember.name,
+          taskTitle: task.title,
+          projectName: project.name,
+          assignedBy: auth.member.name,
+          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+          priority: task.priority,
+          taskId: task._id.toString(),
+          projectId: project._id.toString(),
+          isReassigned: false,
+        });
+        emailSent = Boolean(emailResult.delivered);
+      }
+
       await createNotification({
         recipientId: validatedAssignedTo,
         title: "New Task Assigned",
@@ -199,6 +222,7 @@ export async function POST(request: NextRequest) {
           role: auth.member.role,
         },
         metadata: { taskId: task._id, projectId: project._id },
+        emailSent,
       });
     }
 

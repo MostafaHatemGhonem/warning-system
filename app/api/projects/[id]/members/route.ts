@@ -7,6 +7,10 @@ import Member from "@/models/member";
 import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import {
+  sendProjectAddedEmail,
+  sendProjectRemovedEmail,
+} from "@/lib/email/send-email";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -105,7 +109,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       authorizationResult: "STANDARD_GRANT",
     });
 
-    // Notify the added member
+    // 1. Send email notification via Resend (non-blocking)
+    let emailSent = false;
+    if (member.email) {
+      const emailResult = await sendProjectAddedEmail({
+        email: member.email,
+        userName: member.name,
+        projectName: project.name,
+        role: projectRole,
+        addedBy: auth.member.name,
+        projectId: project._id.toString(),
+      });
+      emailSent = Boolean(emailResult.delivered);
+    }
+
+    // 2. Notify the added member in-app
     await createNotification({
       recipientId: member._id,
       title: "Added to Project Team",
@@ -118,6 +136,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         role: auth.member.role,
       },
       metadata: { projectId: project._id },
+      emailSent,
     });
 
     return NextResponse.json(updatedProject, { status: 200 });
@@ -220,6 +239,37 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       decisionReason: `Removed member ${memberId} from project "${project.name}"`,
       authorizationResult: "STANDARD_GRANT",
     });
+
+    // Notify the removed member via in-app & email
+    const removedMember = await Member.findById(memberId).select("name email");
+    if (removedMember) {
+      let emailSent = false;
+      if (removedMember.email) {
+        const emailResult = await sendProjectRemovedEmail({
+          email: removedMember.email,
+          userName: removedMember.name,
+          projectName: project.name,
+          removedBy: auth.member.name,
+          projectId: project._id.toString(),
+        });
+        emailSent = Boolean(emailResult.delivered);
+      }
+
+      await createNotification({
+        recipientId: memberId,
+        title: "Removed from Project Team",
+        message: `Your membership on project "${project.name}" was concluded by ${auth.member.name}`,
+        type: "project_member_removed",
+        link: `/dashboard/projects`,
+        actor: {
+          _id: auth.member._id,
+          name: auth.member.name,
+          role: auth.member.role,
+        },
+        metadata: { projectId: project._id },
+        emailSent,
+      });
+    }
 
     return NextResponse.json(updatedProject, { status: 200 });
   } catch (error) {

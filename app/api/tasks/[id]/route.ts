@@ -9,6 +9,8 @@ import { verifyPermission } from "@/lib/permissions";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 import { sendDiscordTaskStatusUpdateNotification } from "@/lib/discord";
+import { sendTaskAssignedEmail } from "@/lib/email/send-email";
+import { CANONICAL_APP_URL } from "@/lib/app-config";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -188,10 +190,33 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const oldAssigneeId = previousState.assignedTo?.toString();
     const newAssigneeId = newState.assignedTo?.toString();
     if (newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== auth.member._id.toString()) {
+      const assigneeMember = await Member.findById(newAssigneeId).select("name email");
+      const projectDoc = await Project.findById(task.projectId).select("name");
+
+      let emailSent = false;
+      if (assigneeMember?.email) {
+        console.log(
+          `[Tasks API] Sending task ${oldAssigneeId ? "reassignment" : "assignment"} email to ${assigneeMember.email} for task "${task.title}"...`,
+        );
+        const emailResult = await sendTaskAssignedEmail({
+          email: assigneeMember.email,
+          userName: assigneeMember.name,
+          taskTitle: task.title,
+          projectName: projectDoc?.name || "Project",
+          assignedBy: auth.member.name,
+          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+          priority: task.priority,
+          taskId: task._id.toString(),
+          projectId: (task.projectId?._id || task.projectId).toString(),
+          isReassigned: Boolean(oldAssigneeId),
+        });
+        emailSent = Boolean(emailResult.delivered);
+      }
+
       await createNotification({
         recipientId: newAssigneeId,
-        title: "Task Assigned to You",
-        message: `Task "${task.title}" was assigned to you by ${auth.member.name}`,
+        title: oldAssigneeId ? "Task Reassigned to You" : "Task Assigned to You",
+        message: `Task "${task.title}" was ${oldAssigneeId ? "reassigned" : "assigned"} to you by ${auth.member.name}`,
         type: "task_assigned",
         link: `/dashboard/projects/${task.projectId?._id || task.projectId}`,
         actor: {
@@ -200,6 +225,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
           role: auth.member.role,
         },
         metadata: { taskId: task._id, projectId: task.projectId },
+        emailSent,
       });
     }
 
@@ -269,7 +295,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
             name: auth.member.name,
             role: auth.member.role,
           },
-          appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
+          appUrl: CANONICAL_APP_URL,
         });
       }
     }

@@ -10,6 +10,7 @@ export type NotificationType =
   | "task_status"
   | "project_created"
   | "project_member_added"
+  | "project_member_removed"
   | "warning_issued"
   | "appeal_decision"
   | "system";
@@ -22,6 +23,7 @@ export interface INotification {
   type: NotificationType;
   link?: string;
   read: boolean;
+  emailSent?: boolean;
   actor?: {
     _id?: string;
     name?: string;
@@ -62,6 +64,7 @@ const notificationSchema = new Schema(
         "task_status",
         "project_created",
         "project_member_added",
+        "project_member_removed",
         "warning_issued",
         "appeal_decision",
         "system",
@@ -76,6 +79,12 @@ const notificationSchema = new Schema(
     },
 
     read: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    emailSent: {
       type: Boolean,
       default: false,
       index: true,

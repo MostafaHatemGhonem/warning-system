@@ -9,6 +9,7 @@ import { getCurrentMember } from "@/lib/auth";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { createBulkNotifications } from "@/lib/notifications";
 import { sendDiscordMeetingNotification } from "@/lib/discord";
+import { CANONICAL_APP_URL } from "@/lib/app-config";
 
 // ─── GET /api/meetings ───────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -200,7 +201,7 @@ export async function POST(req: NextRequest) {
         name: currentMember.name,
         role: currentMember.role,
       },
-      appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://infinity-explorers.vercel.app",
+      appUrl: CANONICAL_APP_URL,
     });
 
     // Audit Log

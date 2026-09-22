@@ -9,13 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-email/components": "^1.0.12",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.47.0",
     "mongoose": "^9.10.1",
     "next": "16.3.5",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "resend": "^6.28.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

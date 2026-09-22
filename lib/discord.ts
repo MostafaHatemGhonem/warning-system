@@ -4,6 +4,11 @@
  */
 
 import SystemSetting from "@/models/system-setting";
+import {
+  CANONICAL_APP_URL,
+  APP_LOGO_URL,
+  resolveAppUrl,
+} from "@/lib/app-config";
 
 export interface DiscordEmbedField {
   name: string;
@@ -73,30 +78,15 @@ export function maskDiscordWebhookUrl(url?: string | null): string | null {
   return "https://discord.com/api/webhooks/••••••••";
 }
 
-export const CANONICAL_APP_URL = "https://infinity-explorers.vercel.app";
-export const INFINITY_EXPLORERS_LOGO_URL = `${CANONICAL_APP_URL}/infinity-explorers.png`;
+export { CANONICAL_APP_URL };
+export const INFINITY_EXPLORERS_LOGO_URL = APP_LOGO_URL;
 
 /**
  * Resolves the base web application URL for Discord notifications.
- * Automatically maps localhost / 127.0.0.1 to https://infinity-explorers.vercel.app
- * so links delivered to Discord always point to the production web app.
+ * Automatically maps localhost / 127.0.0.1 to the canonical production URL.
  */
 export function resolveAppBaseUrl(providedUrl?: string | null): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    const envUrl = process.env.NEXT_PUBLIC_APP_URL.trim();
-    if (!envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
-      return envUrl.replace(/\/$/, "");
-    }
-  }
-
-  if (providedUrl) {
-    const trimmed = providedUrl.trim();
-    if (!trimmed.includes("localhost") && !trimmed.includes("127.0.0.1")) {
-      return trimmed.replace(/\/$/, "");
-    }
-  }
-
-  return CANONICAL_APP_URL;
+  return resolveAppUrl("", providedUrl);
 }
 
 /**
