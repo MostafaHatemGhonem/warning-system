@@ -186,118 +186,132 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       authorizationResult: "STANDARD_GRANT",
     });
 
-    // 1. If assignedTo changed and is not null
-    const oldAssigneeId = previousState.assignedTo?.toString();
-    const newAssigneeId = newState.assignedTo?.toString();
-    if (newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== auth.member._id.toString()) {
-      const assigneeMember = await Member.findById(newAssigneeId).select("name email");
-      const projectDoc = await Project.findById(task.projectId).select("name");
+    // ─── Post-Update Notifications (Fail-safe, non-blocking) ────────────────
+    try {
+      // Safely extract string IDs from either populated objects or raw ObjectIds
+      const oldAssigneeId = previousState.assignedTo
+        ? (previousState.assignedTo._id || previousState.assignedTo).toString()
+        : null;
 
-      let emailSent = false;
-      if (assigneeMember?.email) {
-        console.log(
-          `[Tasks API] Sending task ${oldAssigneeId ? "reassignment" : "assignment"} email to ${assigneeMember.email} for task "${task.title}"...`,
-        );
-        const emailResult = await sendTaskAssignedEmail({
-          email: assigneeMember.email,
-          userName: assigneeMember.name,
-          taskTitle: task.title,
-          projectName: projectDoc?.name || "Project",
-          assignedBy: auth.member.name,
-          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
-          priority: task.priority,
-          taskId: task._id.toString(),
-          projectId: (task.projectId?._id || task.projectId).toString(),
-          isReassigned: Boolean(oldAssigneeId),
-        });
-        emailSent = Boolean(emailResult.delivered);
-      }
+      const newAssigneeId = newState.assignedTo
+        ? (newState.assignedTo._id || newState.assignedTo).toString()
+        : null;
 
-      await createNotification({
-        recipientId: newAssigneeId,
-        title: oldAssigneeId ? "Task Reassigned to You" : "Task Assigned to You",
-        message: `Task "${task.title}" was ${oldAssigneeId ? "reassigned" : "assigned"} to you by ${auth.member.name}`,
-        type: "task_assigned",
-        link: `/dashboard/projects/${task.projectId?._id || task.projectId}`,
-        actor: {
-          _id: auth.member._id,
-          name: auth.member.name,
-          role: auth.member.role,
-        },
-        metadata: { taskId: task._id, projectId: task.projectId },
-        emailSent,
-      });
-    }
+      const targetProjectId = (task.projectId?._id || task.projectId)?.toString();
 
-    // 2. If status changed
-    if (body.status && body.status !== previousState.status) {
-      const projectDoc = await Project.findById(task.projectId);
+      // 1. If assignedTo changed and is not null
+      if (newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== auth.member._id.toString()) {
+        const assigneeMember = await Member.findById(newAssigneeId).select("name email");
+        const projectDoc = targetProjectId ? await Project.findById(targetProjectId).select("name") : null;
 
-      // Notify the assignee if updater is not the assignee
-      if (newAssigneeId && newAssigneeId !== auth.member._id.toString()) {
+        let emailSent = false;
+        if (assigneeMember?.email) {
+          console.log(
+            `[Tasks API] Sending task ${oldAssigneeId ? "reassignment" : "assignment"} email to ${assigneeMember.email} for task "${task.title}"...`,
+          );
+          const emailResult = await sendTaskAssignedEmail({
+            email: assigneeMember.email,
+            userName: assigneeMember.name,
+            taskTitle: task.title,
+            projectName: projectDoc?.name || "Project",
+            assignedBy: auth.member.name,
+            dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+            priority: task.priority,
+            taskId: task._id.toString(),
+            projectId: targetProjectId || "",
+            isReassigned: Boolean(oldAssigneeId),
+          });
+          emailSent = Boolean(emailResult.delivered);
+        }
+
         await createNotification({
           recipientId: newAssigneeId,
-          title: "Task Status Updated",
-          message: `Status of "${task.title}" was changed to "${body.status}" by ${auth.member.name}`,
-          type: "task_status",
-          link: `/dashboard/projects/${task.projectId?._id || task.projectId}`,
+          title: oldAssigneeId ? "Task Reassigned to You" : "Task Assigned to You",
+          message: `Task "${task.title}" was ${oldAssigneeId ? "reassigned" : "assigned"} to you by ${auth.member.name}`,
+          type: "task_assigned",
+          link: targetProjectId ? `/dashboard/projects/${targetProjectId}` : `/dashboard/tasks`,
           actor: {
             _id: auth.member._id,
             name: auth.member.name,
             role: auth.member.role,
           },
-          metadata: { taskId: task._id, projectId: task.projectId },
+          metadata: { taskId: task._id, projectId: targetProjectId },
+          emailSent,
         });
       }
 
-      // Also notify project lead if updater is not the project lead
-      const leadIdStr = projectDoc?.leadId ? projectDoc.leadId.toString() : "";
-      if (leadIdStr && leadIdStr !== auth.member._id.toString() && leadIdStr !== newAssigneeId) {
-        await createNotification({
-          recipientId: projectDoc.leadId,
-          title: "Project Task Updated",
-          message: `Task "${task.title}" was changed to "${body.status}" by ${auth.member.name}`,
-          type: "task_status",
-          link: `/dashboard/projects/${projectDoc._id}`,
-          actor: {
-            _id: auth.member._id,
-            name: auth.member.name,
-            role: auth.member.role,
-          },
-          metadata: { taskId: task._id, projectId: projectDoc._id },
-        });
-      }
+      // 2. If status changed
+      if (body.status && body.status !== previousState.status && targetProjectId) {
+        const projectDoc = await Project.findById(targetProjectId);
 
-      // Dispatch Discord ClickUp-style notification for task status change (fail-safe)
-      if (projectDoc) {
-        await sendDiscordTaskStatusUpdateNotification({
-          task: {
-            _id: task._id,
-            title: task.title,
-            description: task.description,
-            priority: task.priority,
-            dueDate: task.dueDate,
-          },
-          oldStatus: previousState.status,
-          newStatus: body.status,
-          project: {
-            _id: projectDoc._id,
-            name: projectDoc.name,
-            discordWebhookUrl: (projectDoc as any).discordWebhookUrl,
-          },
-          assignedMember: task.assignedTo
-            ? {
-                name: (task.assignedTo as any).name,
-                email: (task.assignedTo as any).email,
-              }
-            : null,
-          updater: {
-            name: auth.member.name,
-            role: auth.member.role,
-          },
-          appUrl: CANONICAL_APP_URL,
-        });
+        // Notify the assignee if updater is not the assignee
+        if (newAssigneeId && newAssigneeId !== auth.member._id.toString()) {
+          await createNotification({
+            recipientId: newAssigneeId,
+            title: "Task Status Updated",
+            message: `Status of "${task.title}" was changed to "${body.status}" by ${auth.member.name}`,
+            type: "task_status",
+            link: `/dashboard/projects/${targetProjectId}`,
+            actor: {
+              _id: auth.member._id,
+              name: auth.member.name,
+              role: auth.member.role,
+            },
+            metadata: { taskId: task._id, projectId: targetProjectId },
+          });
+        }
+
+        // Also notify project lead if updater is not the project lead
+        const leadIdStr = projectDoc?.leadId ? projectDoc.leadId.toString() : "";
+        if (leadIdStr && leadIdStr !== auth.member._id.toString() && leadIdStr !== newAssigneeId) {
+          await createNotification({
+            recipientId: projectDoc.leadId,
+            title: "Project Task Updated",
+            message: `Task "${task.title}" was changed to "${body.status}" by ${auth.member.name}`,
+            type: "task_status",
+            link: `/dashboard/projects/${projectDoc._id}`,
+            actor: {
+              _id: auth.member._id,
+              name: auth.member.name,
+              role: auth.member.role,
+            },
+            metadata: { taskId: task._id, projectId: projectDoc._id },
+          });
+        }
+
+        // Dispatch Discord ClickUp-style notification for task status change (fail-safe)
+        if (projectDoc) {
+          await sendDiscordTaskStatusUpdateNotification({
+            task: {
+              _id: task._id,
+              title: task.title,
+              description: task.description,
+              priority: task.priority,
+              dueDate: task.dueDate,
+            },
+            oldStatus: previousState.status,
+            newStatus: body.status,
+            project: {
+              _id: projectDoc._id,
+              name: projectDoc.name,
+              discordWebhookUrl: (projectDoc as any).discordWebhookUrl,
+            },
+            assignedMember: task.assignedTo
+              ? {
+                  name: (task.assignedTo as any).name,
+                  email: (task.assignedTo as any).email,
+                }
+              : null,
+            updater: {
+              name: auth.member.name,
+              role: auth.member.role,
+            },
+            appUrl: CANONICAL_APP_URL,
+          });
+        }
       }
+    } catch (notifError) {
+      console.warn("[Tasks API] Non-fatal error during post-update notifications:", notifError);
     }
 
     return NextResponse.json(task);
