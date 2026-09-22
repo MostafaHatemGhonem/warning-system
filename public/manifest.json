@@ -1,0 +1,17 @@
+{
+  "name": "Infinity Explorers",
+  "short_name": "Infinity",
+  "description": "Enterprise Team Governance, Project Management & Warning System",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/infinity-explorers.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
