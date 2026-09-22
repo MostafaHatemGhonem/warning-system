@@ -14,6 +14,7 @@ import {
   Loader2,
   Trash2,
   UserPlus,
+  X,
 } from "lucide-react";
 
 export type NotificationItem = {
@@ -203,40 +204,56 @@ export function NotificationBell() {
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 sm:w-96 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 animate-in fade-in zoom-in-95 duration-150">
-          
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-zinc-800/80">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-zinc-950 dark:text-white">
-                Notifications
-              </h3>
-              {unreadCount > 0 && (
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
-                  {unreadCount} unread
-                </span>
-              )}
+        <>
+          {/* Mobile backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm sm:hidden transition-opacity"
+            onClick={() => setIsOpen(false)}
+          />
+
+          <div className="fixed inset-x-2.5 top-18 sm:top-full sm:absolute sm:inset-auto sm:right-0 sm:w-96 z-50 mt-1 max-w-md mx-auto sm:mx-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[82vh] sm:max-h-[32rem]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-zinc-800/80 shrink-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-zinc-950 dark:text-white">
+                  Notifications
+                </h3>
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
+                    {unreadCount} unread
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    disabled={isMarkingAll}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-zinc-950 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-white"
+                  >
+                    {isMarkingAll ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <CheckCheck className="h-3.5 w-3.5" />
+                    )}
+                    Mark all as read
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 sm:hidden"
+                  aria-label="Close notifications"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                disabled={isMarkingAll}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-zinc-950 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-white"
-              >
-                {isMarkingAll ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <CheckCheck className="h-3.5 w-3.5" />
-                )}
-                Mark all as read
-              </button>
-            )}
-          </div>
-
-          {/* Notifications List */}
-          <div className="max-h-80 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {/* Notifications List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/60 overscroll-contain">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
                 <Bell className="h-8 w-8 text-zinc-300 dark:text-zinc-600 mb-2" />
@@ -315,7 +332,8 @@ export function NotificationBell() {
             </div>
           )}
 
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

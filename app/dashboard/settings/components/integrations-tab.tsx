@@ -326,7 +326,7 @@ export default function IntegrationsTab({ member }: IntegrationsTabProps) {
           <button
             onClick={handleTestEmail}
             disabled={isTestingEmail}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-500 disabled:opacity-50 transition shrink-0"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 sm:py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-500 disabled:opacity-50 transition shrink-0 touch-manipulation active:scale-[0.99]"
           >
             {isTestingEmail ? (
               <>
@@ -405,7 +405,7 @@ export default function IntegrationsTab({ member }: IntegrationsTabProps) {
             <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-mono text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 break-all">
               {globalData.maskedWebhook || "•••••••••••••••••••• (Protected)"}
             </div>
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleTestGlobal}
@@ -560,8 +560,8 @@ export default function IntegrationsTab({ member }: IntegrationsTabProps) {
             No projects found.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800 touch-pan-x">
+            <table className="min-w-[540px] w-full text-left text-xs">
               <thead className="border-b border-zinc-200 bg-zinc-50 text-[11px] font-bold uppercase tracking-wider text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
                 <tr>
                   <th className="px-4 py-3">Project</th>

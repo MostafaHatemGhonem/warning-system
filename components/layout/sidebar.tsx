@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -108,6 +109,18 @@ export function Sidebar({ open, onClose, userRole }: SidebarProps) {
     ...(showGovernance ? governanceNavigation : []),
   ];
 
+  // Prevent background scrolling when mobile sidebar is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   function isActive(item: (typeof navigation)[number]) {
     if (item.exact) return pathname === item.href;
     return pathname === item.href || pathname.startsWith(item.href + "/");
@@ -120,19 +133,19 @@ export function Sidebar({ open, onClose, userRole }: SidebarProps) {
         <button
           aria-label="Close sidebar"
           onClick={onClose}
-          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 lg:hidden"
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-zinc-200 bg-white transition-transform dark:border-zinc-800 dark:bg-zinc-950 ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-zinc-200 bg-white shadow-2xl transition-transform duration-300 ease-in-out dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:w-64 lg:translate-x-0 lg:shadow-none ${
           open ? "translate-x-0" : "-translate-x-full"
-        } lg:static lg:translate-x-0`}
+        }`}
       >
         <div className="flex h-full flex-col">
 
           {/* ── Logo / Brand ───────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-5 dark:border-zinc-800">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 sm:py-5 dark:border-zinc-800">
             <div className="flex items-center gap-3">
               <Image
                 src="/infinity-explorers.png"
@@ -144,21 +157,21 @@ export function Sidebar({ open, onClose, userRole }: SidebarProps) {
               />
               <div>
                 <p className="text-sm font-bold text-zinc-950 dark:text-white">Infinity Explorers</p>
-                <p className="text-xs text-zinc-500">Team Management</p>
+                <p className="text-[11px] text-zinc-500">Team Management</p>
               </div>
             </div>
 
             <button
               onClick={onClose}
               aria-label="Close menu"
-              className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 lg:hidden dark:hover:bg-zinc-900"
+              className="rounded-xl p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 active:scale-95 transition lg:hidden dark:hover:bg-zinc-900 dark:hover:text-white touch-manipulation"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
 
           {/* ── Navigation ─────────────────────────────────────────────────── */}
-          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 overscroll-contain">
             {navigation.map((item) => {
               const Icon    = item.icon;
               const active  = isActive(item);
@@ -168,14 +181,14 @@ export function Sidebar({ open, onClose, userRole }: SidebarProps) {
                   key={item.label}
                   href={item.href}
                   onClick={onClose}            // close on mobile after nav
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition-all touch-manipulation active:scale-[0.98] ${
                     active
-                      ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
+                      ? "bg-zinc-950 text-white shadow-sm dark:bg-white dark:text-zinc-950"
                       : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  <Icon size={18} />
-                  {item.label}
+                  <Icon size={19} className="shrink-0" />
+                  <span>{item.label}</span>
                 </Link>
               );
             })}

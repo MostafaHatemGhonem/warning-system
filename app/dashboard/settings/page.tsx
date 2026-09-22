@@ -112,18 +112,18 @@ export default function SettingsPage() {
 
         {/* ── 2. User Hero Identity Card ───────────────────────────────────── */}
         {member && (
-          <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 text-xl font-bold text-white shadow-lg dark:from-zinc-100 dark:to-zinc-300 dark:text-zinc-950">
+          <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+              <div className="flex h-12 w-12 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 text-base sm:text-xl font-bold text-white shadow-md dark:from-zinc-100 dark:to-zinc-300 dark:text-zinc-950">
                 {member.name.slice(0, 2).toUpperCase()}
               </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-bold text-zinc-950 dark:text-white">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-zinc-950 dark:text-white truncate">
                     {member.name}
                   </h2>
                   <span
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold ${
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] sm:text-xs font-bold shrink-0 ${
                       isSuper
                         ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                         : isAdmin
@@ -137,16 +137,16 @@ export default function SettingsPage() {
                     {member.role}
                   </span>
                   {member.isCommitteeMember && (
-                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 shrink-0">
                       Committee
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{member.email}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{member.email}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 border-t border-zinc-100 pt-3 sm:border-t-0 sm:pt-0 dark:border-zinc-800">
+            <div className="flex items-center justify-between sm:justify-end gap-2 border-t border-zinc-100 pt-3 sm:border-t-0 sm:pt-0 dark:border-zinc-800">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 Active Account
@@ -163,66 +163,68 @@ export default function SettingsPage() {
         )}
 
         {/* ── 3. Tabs Navigation ───────────────────────────────────────────── */}
-        <div className="flex border-b border-zinc-200 dark:border-zinc-800">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
-              activeTab === "profile"
-                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
-                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <User className="h-4 w-4" />
-            <span>Profile Information</span>
-          </button>
+        <div className="relative -mx-3.5 px-3.5 sm:mx-0 sm:px-0">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1 scrollbar-none scroll-smooth flex-nowrap border-b border-zinc-200 dark:border-zinc-800 touch-pan-x">
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`flex items-center gap-2 border-b-2 py-3 px-3 sm:px-4 text-xs font-semibold shrink-0 whitespace-nowrap transition touch-manipulation ${
+                activeTab === "profile"
+                  ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <User className="h-4 w-4 shrink-0" />
+              <span>Profile</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("security")}
-            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
-              activeTab === "security"
-                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
-                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <KeyRound className="h-4 w-4" />
-            <span>Security & Password</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("security")}
+              className={`flex items-center gap-2 border-b-2 py-3 px-3 sm:px-4 text-xs font-semibold shrink-0 whitespace-nowrap transition touch-manipulation ${
+                activeTab === "security"
+                  ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <KeyRound className="h-4 w-4 shrink-0" />
+              <span>Security</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("preferences")}
-            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
-              activeTab === "preferences"
-                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
-                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <Palette className="h-4 w-4" />
-            <span>Appearance & Alerts</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("preferences")}
+              className={`flex items-center gap-2 border-b-2 py-3 px-3 sm:px-4 text-xs font-semibold shrink-0 whitespace-nowrap transition touch-manipulation ${
+                activeTab === "preferences"
+                  ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <Palette className="h-4 w-4 shrink-0" />
+              <span>Preferences</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("integrations")}
-            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
-              activeTab === "integrations"
-                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
-                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <span className="text-sm">💬</span>
-            <span>Discord & Integrations</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("integrations")}
+              className={`flex items-center gap-2 border-b-2 py-3 px-3 sm:px-4 text-xs font-semibold shrink-0 whitespace-nowrap transition touch-manipulation ${
+                activeTab === "integrations"
+                  ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <span className="text-sm shrink-0">💬</span>
+              <span>Integrations</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("account")}
-            className={`flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition ${
-              activeTab === "account"
-                ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
-                : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <Building2 className="h-4 w-4" />
-            <span>Workspace & Identifiers</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("account")}
+              className={`flex items-center gap-2 border-b-2 py-3 px-3 sm:px-4 text-xs font-semibold shrink-0 whitespace-nowrap transition touch-manipulation ${
+                activeTab === "account"
+                  ? "border-zinc-950 text-zinc-950 dark:border-white dark:text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              <span>Workspace</span>
+            </button>
+          </div>
         </div>
 
         {/* ── 4. Active Tab Content ────────────────────────────────────────── */}
