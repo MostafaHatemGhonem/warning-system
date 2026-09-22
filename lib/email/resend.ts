@@ -23,4 +23,4 @@ export function getResendClient(): Resend | null {
 export { CANONICAL_APP_URL };
 
 export const DEFAULT_EMAIL_FROM =
-  process.env.EMAIL_FROM || "Infinity Explorers <onboarding@resend.dev>";
+  process.env.EMAIL_FROM || "Infinity Explorers <notifications@mostafa-hatem.tech>";

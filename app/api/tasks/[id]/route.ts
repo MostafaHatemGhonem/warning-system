@@ -200,7 +200,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       const targetProjectId = (task.projectId?._id || task.projectId)?.toString();
 
       // 1. If assignedTo changed and is not null
-      if (newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== auth.member._id.toString()) {
+      if (newAssigneeId && newAssigneeId !== oldAssigneeId) {
         const assigneeMember = await Member.findById(newAssigneeId).select("name email");
         const projectDoc = targetProjectId ? await Project.findById(targetProjectId).select("name") : null;
 
