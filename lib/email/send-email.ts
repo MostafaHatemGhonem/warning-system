@@ -7,6 +7,7 @@ import {
   renderTaskAssignedHtml,
   renderProjectAddedHtml,
   renderProjectRemovedHtml,
+  renderWarningIssuedHtml,
 } from "./templates/html-templates";
 
 export interface SendEmailResult {
@@ -232,3 +233,97 @@ export async function sendTaskAssignedEmail(params: {
     return { attempted: true, delivered: false, error: err?.message || "Internal error" };
   }
 }
+
+/**
+ * Sends an email notification to a member when an official disciplinary warning is issued or activated.
+ */
+export async function sendWarningIssuedEmail(params: {
+  email: string;
+  userName: string;
+  warningLevel: string;
+  warningType: string;
+  projectName?: string;
+  severity: number;
+  points: number;
+  description: string;
+  incidentDate?: string | Date | null;
+  issuedBy: string;
+  warningId?: string;
+  status?: string;
+}): Promise<SendEmailResult> {
+  const resend = getResendClient();
+  if (!resend) {
+    console.warn("[Resend Email] Skipped warning email: RESEND_API_KEY is not configured.");
+    return { attempted: false, delivered: false, skipped: true };
+  }
+
+  if (!params.email || !params.email.includes("@")) {
+    console.warn(`[Resend Email] Invalid recipient email for warning: "${params.email}"`);
+    return { attempted: false, delivered: false, error: "Invalid recipient email" };
+  }
+
+  try {
+    const warningUrl = `${CANONICAL_APP_URL}/dashboard/warnings`;
+    const subject = `[Disciplinary Notice] ${params.warningLevel} Issued - Infinity Explorers`;
+
+    const html = renderWarningIssuedHtml({
+      userName: params.userName,
+      warningLevel: params.warningLevel,
+      warningType: params.warningType,
+      projectName: params.projectName || "Global / Organization-wide",
+      severity: params.severity,
+      points: params.points,
+      description: params.description,
+      incidentDate: params.incidentDate,
+      issuedBy: params.issuedBy,
+      status: params.status || "Active",
+      warningUrl,
+    });
+
+    let { data, error } = await resend.emails.send({
+      from: DEFAULT_EMAIL_FROM,
+      to: params.email,
+      subject,
+      html,
+    });
+
+    // Fallback if custom domain has temporary issue
+    if (
+      error &&
+      (error.message.toLowerCase().includes("domain") ||
+        error.message.toLowerCase().includes("verify") ||
+        error.message.toLowerCase().includes("verified"))
+    ) {
+      console.warn(
+        `[Resend Email] Custom sender '${DEFAULT_EMAIL_FROM}' domain error. Retrying warning notice via onboarding@resend.dev...`,
+      );
+      const fallbackResult = await resend.emails.send({
+        from: "Infinity Explorers <onboarding@resend.dev>",
+        to: params.email,
+        subject,
+        html,
+      });
+
+      if (!fallbackResult.error) {
+        data = fallbackResult.data;
+        error = null;
+      } else {
+        error = fallbackResult.error;
+      }
+    }
+
+    if (error) {
+      console.warn("[Resend Email] Delivery error (Warning Notice):", error.message);
+      return { attempted: true, delivered: false, error: error.message };
+    }
+
+    console.log(
+      `[Resend Email] Warning notification email sent successfully to ${params.email} (Email ID: ${data?.id})`,
+    );
+    return { attempted: true, delivered: true, id: data?.id };
+  } catch (err: any) {
+    console.error("[Resend Email] Unexpected error sending warning email:", err?.message || err);
+    return { attempted: true, delivered: false, error: err?.message || "Internal error" };
+  }
+}
+

@@ -18,6 +18,8 @@ import { can } from "@/lib/authorization";
 import { recordAuditLog, getOrCreateRequestId } from "@/lib/audit";
 import { verifyPermission } from "@/lib/permissions";
 import { calculateActivePeriod } from "@/lib/warning-rules";
+import { createNotification } from "@/lib/notifications";
+import { sendWarningIssuedEmail } from "@/lib/email/send-email";
 
 // ─── GET /api/warnings ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -140,6 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     let project: string | null = null;
+    let targetProject: { _id?: any; name?: string; title?: string } | null = null;
     if (type === "Project") {
       const projectId = body.project as string;
       if (!projectId || !mongoose.isValidObjectId(projectId)) {
@@ -148,7 +151,7 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
-      const targetProject = await Project.findById(projectId).lean();
+      targetProject = await Project.findById(projectId).lean();
       if (!targetProject) {
         return NextResponse.json(
           { success: false, message: "Target project does not exist" },
@@ -311,6 +314,56 @@ export async function POST(request: NextRequest) {
       authorizationResult: authCheck.authorizationResult,
       overrideReason: authCheck.isOverride ? overrideReason : null,
     });
+
+    // ── Dispatch In-App & Email Notifications to Target Member ───────────────
+    try {
+      await createNotification({
+        recipientId: memberId,
+        title: `Warning Notice: ${level}`,
+        message:
+          type === "Project"
+            ? `An official ${level} has been issued for project "${targetProject?.name || "Project"}".`
+            : `An official global ${level} has been issued across the organization.`,
+        type: "warning_issued",
+        link: "/dashboard/warnings",
+        actor: {
+          _id: currentMember._id,
+          name: currentMember.name,
+          role: currentMember.role,
+          avatar: currentMember.avatar,
+        },
+        metadata: {
+          warningId: warning._id.toString(),
+          level,
+          type,
+          severity,
+          points,
+          status: initialStatus,
+          projectName: targetProject?.name || "Global",
+        },
+      });
+    } catch (notifErr) {
+      console.warn("[Notifications] Failed to create in-app notification for warning:", notifErr);
+    }
+
+    if (targetMember && targetMember.email) {
+      sendWarningIssuedEmail({
+        email: targetMember.email,
+        userName: targetMember.name,
+        warningLevel: level,
+        warningType: type,
+        projectName: targetProject?.name || "Global / Organization-wide",
+        severity,
+        points,
+        description,
+        incidentDate,
+        issuedBy: currentMember.name,
+        warningId: warning._id.toString(),
+        status: initialStatus,
+      }).catch((emailErr) => {
+        console.warn("[Email] Failed to dispatch warning notice email:", emailErr);
+      });
+    }
 
     return NextResponse.json(
       {

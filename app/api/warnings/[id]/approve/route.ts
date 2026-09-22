@@ -10,6 +10,8 @@ import {
   checkApprovalEligibility,
   executeWarningApproval,
 } from "@/lib/warning-rules";
+import { createNotification } from "@/lib/notifications";
+import { sendWarningIssuedEmail } from "@/lib/email/send-email";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -128,6 +130,59 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       { path: "issuedBy", select: "name email role" },
       { path: "approvedBy", select: "name email role" },
     ]);
+
+    // ── Dispatch In-App & Email Notifications on Warning Approval ───────────
+    const recipientMember = warning.member as any;
+    const projectDoc = warning.project as any;
+    const approverName = currentMember.name;
+    const issuerName = (warning.issuedBy as any)?.name || approverName;
+
+    try {
+      await createNotification({
+        recipientId: recipientMember?._id || recipientMember,
+        title: `Warning Approved: ${warning.level}`,
+        message:
+          warning.type === "Project"
+            ? `Your ${warning.level} for project "${projectDoc?.name || "Project"}" has been approved and activated.`
+            : `Your global ${warning.level} has been approved and activated.`,
+        type: "warning_issued",
+        link: "/dashboard/warnings",
+        actor: {
+          _id: currentMember._id,
+          name: currentMember.name,
+          role: currentMember.role,
+        },
+        metadata: {
+          warningId: warning._id.toString(),
+          level: warning.level,
+          status: "Active",
+          type: warning.type,
+          severity: warning.severity,
+          points: warning.points,
+        },
+      });
+    } catch (notifErr) {
+      console.warn("[Notifications] Failed to create in-app notification on approval:", notifErr);
+    }
+
+    if (recipientMember && recipientMember.email) {
+      sendWarningIssuedEmail({
+        email: recipientMember.email,
+        userName: recipientMember.name,
+        warningLevel: warning.level,
+        warningType: warning.type,
+        projectName: projectDoc?.name || projectDoc?.title || "Global / Organization-wide",
+        severity: warning.severity,
+        points: warning.points,
+        description: warning.description,
+        incidentDate: warning.incidentDate,
+        issuedBy: issuerName,
+        warningId: warning._id.toString(),
+        status: "Active",
+      }).catch((emailErr) => {
+        console.warn("[Email] Failed to dispatch warning approval email:", emailErr);
+      });
+    }
 
     return NextResponse.json(
       {
