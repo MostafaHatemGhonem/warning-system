@@ -3,9 +3,11 @@ import {
   CANONICAL_APP_URL,
   DEFAULT_EMAIL_FROM,
 } from "./resend";
-import { ProjectAddedEmail } from "./templates/project-added";
-import { ProjectRemovedEmail } from "./templates/project-removed";
-import { TaskAssignedEmail } from "./templates/task-assigned";
+import {
+  renderTaskAssignedHtml,
+  renderProjectAddedHtml,
+  renderProjectRemovedHtml,
+} from "./templates/html-templates";
 
 export interface SendEmailResult {
   attempted: boolean;
@@ -29,6 +31,7 @@ export async function sendProjectAddedEmail(params: {
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
+    console.warn("[Resend Email] Skipped project added email: RESEND_API_KEY is not configured.");
     return { attempted: false, delivered: false, skipped: true };
   }
 
@@ -38,25 +41,53 @@ export async function sendProjectAddedEmail(params: {
 
   try {
     const projectUrl = `${CANONICAL_APP_URL}/dashboard/projects/${params.projectId}`;
+    const subject = `You've been added to project: ${params.projectName}`;
+    const html = renderProjectAddedHtml({
+      userName: params.userName,
+      projectName: params.projectName,
+      role: params.role,
+      addedBy: params.addedBy,
+      projectUrl,
+    });
 
-    const { data, error } = await resend.emails.send({
+    let { data, error } = await resend.emails.send({
       from: DEFAULT_EMAIL_FROM,
       to: params.email,
-      subject: `You've been added to project: ${params.projectName}`,
-      react: ProjectAddedEmail({
-        userName: params.userName,
-        projectName: params.projectName,
-        role: params.role,
-        addedBy: params.addedBy,
-        projectUrl,
-      }),
+      subject,
+      html,
     });
+
+    // Fallback if custom domain has temporary issue
+    if (
+      error &&
+      (error.message.toLowerCase().includes("domain") ||
+        error.message.toLowerCase().includes("verify") ||
+        error.message.toLowerCase().includes("verified"))
+    ) {
+      console.warn(
+        `[Resend Email] Custom sender '${DEFAULT_EMAIL_FROM}' domain error. Retrying via onboarding@resend.dev...`,
+      );
+      const fallbackResult = await resend.emails.send({
+        from: "Infinity Explorers <onboarding@resend.dev>",
+        to: params.email,
+        subject,
+        html,
+      });
+
+      if (!fallbackResult.error) {
+        data = fallbackResult.data;
+        error = null;
+      } else {
+        error = fallbackResult.error;
+      }
+    }
 
     if (error) {
       console.warn("[Resend Email] Delivery error (Project Added):", error.message);
       return { attempted: true, delivered: false, error: error.message };
     }
 
+    console.log(`[Resend Email] Project added email sent successfully to ${params.email} (ID: ${data?.id})`);
     return { attempted: true, delivered: true, id: data?.id };
   } catch (err: any) {
     console.error("[Resend Email] Unexpected error sending project added email:", err?.message || err);
@@ -76,6 +107,7 @@ export async function sendProjectRemovedEmail(params: {
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
+    console.warn("[Resend Email] Skipped project removed email: RESEND_API_KEY is not configured.");
     return { attempted: false, delivered: false, skipped: true };
   }
 
@@ -84,15 +116,18 @@ export async function sendProjectRemovedEmail(params: {
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const subject = `Project membership update: ${params.projectName}`;
+    const html = renderProjectRemovedHtml({
+      userName: params.userName,
+      projectName: params.projectName,
+      removedBy: params.removedBy,
+    });
+
+    let { data, error } = await resend.emails.send({
       from: DEFAULT_EMAIL_FROM,
       to: params.email,
-      subject: `Project membership update: ${params.projectName}`,
-      react: ProjectRemovedEmail({
-        userName: params.userName,
-        projectName: params.projectName,
-        removedBy: params.removedBy,
-      }),
+      subject,
+      html,
     });
 
     if (error) {
@@ -100,6 +135,7 @@ export async function sendProjectRemovedEmail(params: {
       return { attempted: true, delivered: false, error: error.message };
     }
 
+    console.log(`[Resend Email] Project removed email sent successfully to ${params.email} (ID: ${data?.id})`);
     return { attempted: true, delivered: true, id: data?.id };
   } catch (err: any) {
     console.error("[Resend Email] Unexpected error sending project removed email:", err?.message || err);
@@ -124,44 +160,40 @@ export async function sendTaskAssignedEmail(params: {
 }): Promise<SendEmailResult> {
   const resend = getResendClient();
   if (!resend) {
+    console.warn("[Resend Email] Skipped task assigned email: RESEND_API_KEY is not configured in process.env.");
     return { attempted: false, delivered: false, skipped: true };
   }
 
   if (!params.email || !params.email.includes("@")) {
+    console.warn(`[Resend Email] Invalid recipient email: "${params.email}"`);
     return { attempted: false, delivered: false, error: "Invalid recipient email" };
-  }
-
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (apiKey && apiKey.includes("xxxx")) {
-    console.warn(
-      `[Resend Email] Notice: RESEND_API_KEY is currently set to placeholder '${apiKey}'. Please add your active Resend API key to deliver real emails to ${params.email}.`,
-    );
   }
 
   try {
     const taskUrl = `${CANONICAL_APP_URL}/dashboard/projects/${params.projectId}`;
-
     const subject = params.isReassigned
       ? `Task reassigned to you: ${params.taskTitle}`
       : `New task assigned: ${params.taskTitle} (${params.projectName})`;
+
+    const html = renderTaskAssignedHtml({
+      userName: params.userName,
+      taskTitle: params.taskTitle,
+      projectName: params.projectName,
+      assignedBy: params.assignedBy,
+      dueDate: params.dueDate,
+      priority: params.priority,
+      taskUrl,
+      isReassigned: params.isReassigned,
+    });
 
     let { data, error } = await resend.emails.send({
       from: DEFAULT_EMAIL_FROM,
       to: params.email,
       subject,
-      react: TaskAssignedEmail({
-        userName: params.userName,
-        taskTitle: params.taskTitle,
-        projectName: params.projectName,
-        assignedBy: params.assignedBy,
-        dueDate: params.dueDate,
-        priority: params.priority,
-        taskUrl,
-        isReassigned: params.isReassigned,
-      }),
+      html,
     });
 
-    // Fallback if custom domain is not yet verified on Resend
+    // Fallback if custom sender domain has an issue
     if (
       error &&
       (error.message.toLowerCase().includes("domain") ||
@@ -175,16 +207,7 @@ export async function sendTaskAssignedEmail(params: {
         from: "Infinity Explorers <onboarding@resend.dev>",
         to: params.email,
         subject,
-        react: TaskAssignedEmail({
-          userName: params.userName,
-          taskTitle: params.taskTitle,
-          projectName: params.projectName,
-          assignedBy: params.assignedBy,
-          dueDate: params.dueDate,
-          priority: params.priority,
-          taskUrl,
-          isReassigned: params.isReassigned,
-        }),
+        html,
       });
 
       if (!fallbackResult.error) {
